@@ -1,0 +1,76 @@
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: csi-hyperv-node
+  namespace: csi-hyperv
+spec:
+  selector:
+    matchLabels:
+      app: csi-hyperv-node
+  template:
+    metadata:
+      labels:
+        app: csi-hyperv-node
+    spec:
+      containers:
+        - name: csi-node-driver-registrar
+          image: quay.io/k8scsi/csi-node-driver-registrar:v1.2.0
+          args:
+            - "--v=5"
+            - "--csi-address=/csi/csi.sock"
+            - "--kubelet-registration-path=/var/lib/kubelet/plugins/eu.zetanova.csi.hyperv/csi.sock"
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "rm -rf /registration/eu.zetanova.csi.hyperv /registration/eu.zetanova.csi.hyperv-reg.sock"]
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+            - name: registration-dir
+              mountPath: /registration
+
+        - name: mock-driver
+          image: quay.io/k8scsi/mock-driver:canary
+          imagePullPolicy: "IfNotPresent"
+          securityContext:
+            privileged: true
+          args:
+            - "--name=eu.zetanova.csi.hyperv"
+          env:
+            - name: CSI_ENDPOINT
+              value: /csi/csi.sock
+          volumeMounts:
+            - mountPath: /csi
+              name: plugin-dir
+            - mountPath: /var/lib/kubelet/pods
+              mountPropagation: Bidirectional
+              name: mountpoint-dir
+            - mountPath: /dev
+              name: dev-dir 
+            - mountPath: /var/lib/hyperv
+              name: hyperv-dir
+
+      volumes:
+        - name: registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry/
+            type: Directory
+        - name: plugin-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/eu.zetanova.csi.hyperv/
+            type: DirectoryOrCreate
+        - name: mountpoint-dir
+          hostPath:
+            path: /var/lib/kubelet/pods
+            type: DirectoryOrCreate
+        - name: dev-dir
+          hostPath:
+            path: /dev
+            type: Directory
+        - name: hyperv-dir
+          hostPath:
+            path: /var/lib/hyperv
+            type: Directory
+          

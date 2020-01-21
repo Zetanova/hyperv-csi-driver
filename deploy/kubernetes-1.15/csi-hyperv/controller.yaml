@@ -1,0 +1,116 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: csi-hyperv-controller
+  namespace: csi-hyperv
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: csi-hyperv-controller
+  template:
+    metadata:
+      labels:
+        app: csi-hyperv-controller
+    spec:      
+      serviceAccount: csi-hyperv-controller
+      initContainers:
+        - name: ssh-init
+          image: busybox:latest
+          command: ['sh', '-c', 'cp /ssh-key/known_hosts /ssh-tmp/known_hosts']
+          volumeMounts:
+          - mountPath: "/ssh-key"
+            name: ssh-key-dir
+          - mountPath: "/ssh-tmp"
+            name: ssh-tmp-dir
+      containers:
+        - name: csi-provisioner
+          image: quay.io/k8scsi/csi-provisioner:canary
+          args:
+            - "--csi-address=$(ADDRESS)"
+          # - "--enable-leader-election"
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+          imagePullPolicy: "IfNotPresent"
+          resources:
+            limits:
+              cpu: 10m
+              memory: 20Mi
+            requests:
+              cpu: 2m
+              memory: 12Mi
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+
+        - name: csi-attacher
+          image: quay.io/k8scsi/csi-attacher:canary
+          args:
+            - "--v=5"
+            - "--csi-address=$(ADDRESS)"
+          # - "--leader-election"
+          env:
+            - name: MY_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: ADDRESS
+              value: /csi/csi.sock
+          imagePullPolicy: "IfNotPresent"
+          resources:
+            limits:
+              cpu: 10m
+              memory: 20Mi
+            requests:
+              cpu: 2m
+              memory: 12Mi
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+
+        - name: mock-driver
+          image: quay.io/k8scsi/mock-driver:canary
+          imagePullPolicy: "IfNotPresent"
+          args:
+            - "--name=eu.zetanova.csi.hyperv"
+          env:
+            - name: CSI_ENDPOINT
+              value: /csi/csi.sock
+          resources:
+            limits:
+              cpu: 150m
+              memory: 256Mi
+            requests:
+              cpu: 5m
+              memory: 124Mi
+          volumeMounts:
+            - mountPath: /csi
+              name: socket-dir
+            - mountPath: /var/lib/hyperv
+              name: hyperv-dir
+            - mountPath: "/root/.ssh/id_ed25519"
+              subPath: "id_ed25519"
+              name: ssh-key-dir
+            - mountPath: "/root/.ssh/known_hosts"
+              subPath: "known_hosts"
+              name: ssh-tmp-dir
+              
+      volumes:
+        - name: socket-dir
+          emptyDir: {}
+        - name: hyperv-dir
+          hostPath:
+            path: /var/lib/hyperv
+            type: Directory
+        - name: ssh-key-dir
+          secret:
+            secretName: csi-hyperv-key
+            items: 
+            - key: id_ed25519
+              path: id_ed25519
+              mode: 256
+            - key: known_hosts
+              path: known_hosts
+        - name: ssh-tmp-dir
+          emptyDir: {}

@@ -1,0 +1,52 @@
+#required addon 
+#apt-get update 
+#apt-get install -y openssh-client
+
+#test with 
+#Test-Connection <serverName>
+#Enter-PSSession <serverName> -SSHTransport -UserName administrator
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pwsh-test
+spec:
+  initContainers:
+  - name: ssh-init
+    image: busybox:latest
+    command: ['sh', '-c', 'cp /ssh-key/known_hosts /ssh-tmp/known_hosts']
+    volumeMounts:
+    - mountPath: "/ssh-key"
+      name: ssh-key-dir
+    - mountPath: "/ssh-tmp"
+      name: ssh-tmp-dir
+  containers:
+  - name: pwsh
+    image: mcr.microsoft.com/powershell:latest
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 5m
+        memory: 128Mi
+    command: ["pwsh"]
+    args: ["-c", "sleep 10000"]
+    volumeMounts:
+    - mountPath: "/root/.ssh/id_ed25519"
+      subPath: "id_ed25519"
+      name: ssh-key-dir
+    - mountPath: "/root/.ssh/known_hosts"
+      subPath: "known_hosts"
+      name: ssh-tmp-dir
+  volumes:
+  - name: ssh-key-dir
+    secret:
+      secretName: csi-hyperv-key
+      items: 
+      - key: id_ed25519
+        path: id_ed25519
+        mode: 256
+      - key: known_hosts
+        path: known_hosts
+  - name: ssh-tmp-dir
+    emptyDir: {}

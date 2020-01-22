@@ -28,9 +28,9 @@ namespace PNet.Automation
 
         public PNetPowerShell(string hostName, string userName, string keyFile)
         {
-            if (!string.IsNullOrEmpty(hostName))
+            if (string.IsNullOrEmpty(hostName))
                 throw new ArgumentNullException(nameof(hostName));
-            if (!string.IsNullOrEmpty(userName))
+            if (string.IsNullOrEmpty(userName))
                 throw new ArgumentNullException(nameof(userName));
 
             var conInfo = new SSHConnectionInfo(userName, hostName, keyFile);

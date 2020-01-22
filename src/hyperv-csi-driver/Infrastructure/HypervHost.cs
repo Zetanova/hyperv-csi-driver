@@ -61,12 +61,14 @@ namespace HypervCsiDriver.Infrastructure
     {
         public Guid VMId { get; set; }
         public string VolumePath { get; set; }
+        public string Host { get; set; }
     }
 
     public sealed class HypervDetachVolumeRequest
     {
         public Guid VMId { get; set; }
         public string VolumePath { get; set; }
+        public string Host { get; set; }
     }
 
     public sealed class HypervVolumeFilter
@@ -522,9 +524,9 @@ namespace HypervCsiDriver.Infrastructure
             var commands = new List<Command>(2);
 
             cmd = new Command("Get-StorageQoSFlow");
-            if(filter?.VMId != Guid.Empty)
+            if(filter != null && filter.VMId != Guid.Empty)
                 cmd.Parameters.Add("InitiatorId", filter.VMId);
-            if (string.IsNullOrEmpty(filter?.VMName))
+            if (!string.IsNullOrEmpty(filter?.VMName))
                 cmd.Parameters.Add("InitiatorName", filter.VMName);
             if (!string.IsNullOrEmpty(filter?.VolumePath))
                 cmd.Parameters.Add("FilePath", filter.VolumePath);

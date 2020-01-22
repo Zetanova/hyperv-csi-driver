@@ -11,21 +11,21 @@ namespace HypervCsiDriver.Hosting
 
         public string HostName { get; set; }
 
-        public string UserName { get; set; }
+        public string UserName { get; set; } = "Administrator";
 
         public string KeyFile { get; set; }
 
-        public ControllerSettings Controller { get; set; }
+        //public ControllerSettings Controller { get; set; }
         
-        public NodeSettings Node { get; set; }
+        //public NodeSettings Node { get; set; }
 
-        public sealed class ControllerSettings
-        {
-        }
+        //public sealed class ControllerSettings
+        //{
+        //}
 
-        public sealed class NodeSettings
-        {
-        }
+        //public sealed class NodeSettings
+        //{
+        //}
     }
 
     public enum HypervCsiDriverType

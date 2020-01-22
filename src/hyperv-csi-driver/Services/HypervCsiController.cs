@@ -278,9 +278,7 @@ namespace HypervCsiDriver
                     "volume not found");
 
             var vmId = Guid.Parse(request.NodeId);
-
-
-
+            
             //var volumePath = request.VolumeContext["Path"];
 
             HypervVirtualMachineVolumeInfo vmVolume;
@@ -329,7 +327,8 @@ namespace HypervCsiDriver
                 vmVolume = await _service.AttachVolumeAsync(new HypervAttachVolumeRequest
                 {
                     VMId = vm.Id,
-                    VolumePath = volume.Path
+                    VolumePath = volume.Path,
+                    Host = vm.Host
                 },
                 context.CancellationToken);
             }
@@ -375,7 +374,8 @@ namespace HypervCsiDriver
             await _service.DetachVolumeAsync(new HypervDetachVolumeRequest
             {
                 VMId = vm.Id,
-                VolumePath = foundVolume.Path
+                VolumePath = foundVolume.Path,
+                Host = vm.Host
             }, context.CancellationToken);
 
             var rsp = new ControllerUnpublishVolumeResponse

@@ -2,6 +2,10 @@
 
 This repository hosts the CSI HyperV driver and all of its build and dependent configuration files to deploy the driver.
 
+## Information
+
+The driver connects to the HyperV Host, creates a VirtualDisk 
+and attaches it to the requested VirtualMachine.
 
 ## Pre-requisite
 
@@ -54,6 +58,16 @@ Test connection from your windows client:
 Enter-PSSession <ServerFQDN> --SSHTransport -UserName Administrator
 ```
 
+### HyperV Host: Storage
+
+Currently only ClusterStorageVolume is supported.
+
+To enable storage of VirtualDisks on a CSV,
+create one subfolder "Volumes" on the CSV
+
+The volume property "Storage" is to specify the CSV by name.
+`C:\ClusterStorage\<Storage>\Volumes\<VolumeId>.vdhx`
+
 ### Kubernetes Node
 centos/rhel:
 ```
@@ -73,16 +87,51 @@ ssh-keyscan -H -t ed25519 server1 server2 > ~/path/to/known_hosts
 ssh-keyscan -H -t ed25519 server1.domain.local server2.domain.local >> ~/path/to/known_hosts
 ```
 
-
-
 ## Deploy Kubernetes
 
-create a ssh secret 
+create a ssh secret and deploy the driver
 ```
 kubectl create secret generic csi-hyperv-key --from-file=id_ed25519=~/path/to/local-ssh-keys --from-file=known_hosts=~/path/to/known_hosts
+
+#static namespace csi-hyperv
+kubectl apply -f .\deploy\kubernetes-1.15\csi-hyperv\rbac.yaml
+kubectl apply -f .\deploy\kubernetes-1.15\csi-hyperv\controller.yaml
+kubectl apply -f .\deploy\kubernetes-1.15\csi-hyperv\node.yaml
 ```
 
 ## Run example application and validate
 
+To test connection from the container to the HyperV host servers
+```
+kubectl apply -f .\examples\pwsh-test.yaml
 
-## Confirm Hostpath driver works
+#after few moments
+kubectl exec -it pwsh-test -- pwsh
+
+#test with:
+Enter-PSSession server1 -UserName administrator
+Enter-PSSession server1.domain.local -UserName administrator
+```
+
+## Confirm HyperV driver works
+
+```
+kubectl apply -f .\examples\csi-storageclass.yaml
+kubectl apply -f .\examples\csi-pvc.yaml
+
+#after few moments 
+kubectl get pvc csi-pvc
+
+#verify that the VirtualDisk on the storage was created
+#ClusterStorage\<Storage>\Volumes\<VolumeId>.vhdx
+
+#use the PVC as volume mount
+```
+
+## Limitiations & Improvements
+
+- Currently only ClusterStorageVolumes are supported.
+The cluster storage can run over S2D or SOFS.
+- The support of a shared-nothing HyperV Host Array is technically possible, 
+but not implemented.
+

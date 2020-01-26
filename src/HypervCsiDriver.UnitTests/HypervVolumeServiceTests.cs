@@ -184,5 +184,60 @@ namespace HypervCsiDriver.UnitTests
                 VolumePath = volume.Path
             });
         }
+
+        [Theory]
+        [InlineData("sv1505", "hv05", "influxdb-01", "lnx1519")]
+        public async Task create_and_attach_volume(string hostName, string storageName, string volumeName, string vmName)
+        {
+            var service = await Fixture.GetHypervVolumeSerivceAsync(hostName);
+
+            var filter = new HypervVolumeFilter
+            {
+                Name = volumeName,
+                Storage = storageName,
+            };
+
+             
+            var volume = await service.GetVolumesAsync(filter).FirstOrDefaultAsync();
+
+            if (volume == default)
+            {
+                var detail = await service.CreateVolumeAsync(new HypervCreateVolumeRequest
+                {
+                    Name = volumeName,
+                    Storage = storageName
+                });
+
+                Assert.Equal(volumeName, detail.Name);
+                Assert.Equal(storageName, detail.Storage);
+
+                volume = await service.GetVolumesAsync(filter).FirstAsync();
+            }
+            
+            var vm = await service.GetVirtualMachinesAsync(new HypervVirtualMachineFilter { Name = vmName }).FirstAsync();
+
+            Assert.Equal(vmName, vm.Name, true);
+            Assert.Equal(volumeName, volume.Name, true);
+
+            var vmVolume = await service.GetVirtualMachineVolumesAsync(vm.Id,
+                new HypervVirtualMachineVolumeFilter
+                {
+                    VolumePath = volume.Path,
+                    Host = vm.Host
+                })
+                .FirstOrDefaultAsync();
+
+            vmVolume ??= await service.AttachVolumeAsync(new HypervAttachVolumeRequest
+            {
+                VMId = vm.Id,
+                VolumePath = volume.Path,
+                Host = vm.Host
+            });
+
+            Assert.Equal(vm.Id, vmVolume.VMId);
+            Assert.Equal(vm.Name, vmVolume.VMName, true);
+            Assert.Equal(volume.Name, vmVolume.VolumeName, true);
+            Assert.Equal(volume.Path, vmVolume.VolumePath, true);
+        }
     }
 }

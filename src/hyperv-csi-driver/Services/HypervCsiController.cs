@@ -1,6 +1,6 @@
 using Grpc.Core;
 using HypervCsiDriver.Infrastructure;
-using HypervCsiDriver.Protos;
+using csi;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Linq;

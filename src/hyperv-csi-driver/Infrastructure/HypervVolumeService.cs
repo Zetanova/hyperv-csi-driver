@@ -46,6 +46,11 @@ namespace HypervCsiDriver.Infrastructure
 
         HypervHost GetHost(string hostName)
         {
+            if (string.IsNullOrEmpty(hostName))
+                throw new ArgumentNullException(nameof(hostName));
+
+            hostName = hostName.ToLower();
+
             if (!_hosts.TryGetValue(hostName, out var host))
             {
                 host = new HypervHost(hostName, _options.UserName, _options.KeyFile);
@@ -77,7 +82,7 @@ namespace HypervCsiDriver.Infrastructure
             if (string.IsNullOrEmpty(request.Host))
                 throw new ArgumentNullException(nameof(request.Host));
 
-            return GetHost(_options.HostName).AttachVolumeAsync(request, cancellationToken);
+            return GetHost(request.Host).AttachVolumeAsync(request, cancellationToken);
         }
 
         public Task DetachVolumeAsync(HypervDetachVolumeRequest request, CancellationToken cancellationToken = default)
@@ -85,7 +90,7 @@ namespace HypervCsiDriver.Infrastructure
             if (string.IsNullOrEmpty(request.Host))
                 throw new ArgumentNullException(nameof(request.Host));
 
-            return GetHost(_options.HostName).DetachVolumeAsync(request, cancellationToken);
+            return GetHost(request.Host).DetachVolumeAsync(request, cancellationToken);
         }
 
         public async IAsyncEnumerable<HypervVirtualMachineInfo> GetVirtualMachinesAsync(HypervVirtualMachineFilter filter)

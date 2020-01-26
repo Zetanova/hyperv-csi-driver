@@ -1,6 +1,6 @@
 using Grpc.Core;
 using HypervCsiDriver.Hosting;
-using HypervCsiDriver.Protos;
+using csi;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Threading.Tasks;
@@ -23,11 +23,15 @@ namespace HypervCsiDriver
 
         public override Task<GetPluginInfoResponse> GetPluginInfo(GetPluginInfoRequest request, ServerCallContext context)
         {
+            _logger.LogDebug("get plugin info request");
+
             var rsp = new GetPluginInfoResponse
             {
                 Name = "eu.zetanova.csi.hyperv",
                 VendorVersion = "0.1.0"
             };
+
+            rsp.Manifest.Add("url", "https://github.com/Zetanova/hyperv-csi-driver");
 
             return Task.FromResult(rsp);
         }
@@ -53,7 +57,7 @@ namespace HypervCsiDriver
 
                     break;
             }
-            
+
             //todo add support for single hyperv host with disk migration
             //rsp.Capabilities.Add(new PluginCapability
             //{

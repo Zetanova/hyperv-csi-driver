@@ -1,6 +1,6 @@
 using Grpc.Core;
 using HypervCsiDriver.Infrastructure;
-using HypervCsiDriver.Protos;
+using csi;
 using HypervCsiDriver.Utils;
 using Microsoft.Extensions.Logging;
 using System;

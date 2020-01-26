@@ -193,9 +193,12 @@ namespace HypervCsiDriver.Infrastructure
     {
         readonly PNetPowerShell _power;
 
+        readonly string _hostName;
+
         public HypervHost(string hostName, string userName, string keyFile = null)
         {
             _power = new PNetPowerShell(hostName, userName, keyFile);
+            _hostName = hostName;
         }
 
         public async Task<HypervVolumeDetail> CreateVolumeAsync(HypervCreateVolumeRequest request, CancellationToken cancellationToken = default)
@@ -397,6 +400,8 @@ namespace HypervCsiDriver.Infrastructure
                 throw new ArgumentNullException(nameof(request.VMId));
             if (string.IsNullOrEmpty(request.VolumePath))
                 throw new ArgumentNullException(nameof(request.VolumePath));
+            if (!string.IsNullOrEmpty(request.Host) && !StringComparer.OrdinalIgnoreCase.Equals(_hostName, request.Host))
+                throw new ArgumentException(nameof(request.Host));
 
             //maybe check path in storage 
 

@@ -6,6 +6,7 @@
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <RootNamespace>HypervCsiDriver</RootNamespace>
     <AssemblyName>HypervCsiDriver</AssemblyName>
+    <StartupObject>HypervCsiDriver.Program</StartupObject>
   </PropertyGroup>
 
   <ItemGroup>

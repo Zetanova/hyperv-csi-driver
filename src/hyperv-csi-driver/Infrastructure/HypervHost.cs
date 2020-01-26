@@ -40,7 +40,7 @@ namespace HypervCsiDriver.Infrastructure
 
         public bool Shared { get; set; } = false;
 
-        public ulong SizeBytes { get; set; } = 10 * 1024 * 1024; //10GB
+        public ulong SizeBytes { get; set; } = 10 * 1024 * 1024 * 1024UL; //10GB
 
         public uint BlockSizeBytes { get; set; } = 1024 * 1024; //1M
 

@@ -59,7 +59,9 @@ namespace HypervCsiDriver.UnitTests
         }
 
         [Theory]
-        [InlineData("lnx1521", "test", 0, 1, "/drivetest")]
+        //[InlineData("lnx1521", "test", 0, 1, "/drivetest")]
+        [InlineData("lnx1519", "grafana-01", 0, 2, "/mnt/grafana-01")]
+        [InlineData("lnx1519", "influxdb-01", 0, 3, "/mnt/influxdb-01")]
         public async Task mount_device(string hostName, string name, int countrollerNumber, int controllerLocation, string targetPath)
         {
             var service = await Fixture.GetNodeServiceAsync(hostName);

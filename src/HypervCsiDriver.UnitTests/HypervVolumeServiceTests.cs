@@ -187,7 +187,8 @@ namespace HypervCsiDriver.UnitTests
 
         [Theory]
         [InlineData("sv1505", "hv05", "influxdb-01", "lnx1519")]
-        public async Task create_and_attach_volume(string hostName, string storageName, string volumeName, string vmName)
+        [InlineData("sv1505", "hv05", "grafana-01", "lnx1519")]
+        public async Task create_and_attach_and_mount_volume(string hostName, string storageName, string volumeName, string vmName)
         {
             var service = await Fixture.GetHypervVolumeSerivceAsync(hostName);
 
@@ -238,6 +239,7 @@ namespace HypervCsiDriver.UnitTests
             Assert.Equal(vm.Name, vmVolume.VMName, true);
             Assert.Equal(volume.Name, vmVolume.VolumeName, true);
             Assert.Equal(volume.Path, vmVolume.VolumePath, true);
+
         }
     }
 }

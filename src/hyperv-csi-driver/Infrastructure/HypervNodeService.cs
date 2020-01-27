@@ -92,32 +92,47 @@ namespace HypervCsiDriver.Infrastructure
             Command cmd;
             var commands = new List<Command>(4);
 
+            //centos 8
             //lsblk -SJ | ConvertFrom-Json | Select-Object -ExpandProperty blockdevices | where-object -Property hctl -eq -Value "0:0:0:1"
-            cmd = new Command("lsblk -SJ", true);
+            //cmd = new Command("lsblk -SJ", true);
+            //commands.Add(cmd);
+
+            //cmd = new Command("ConvertFrom-Json");
+            //commands.Add(cmd);
+
+            //cmd = new Command("Select-Object");
+            //cmd.Parameters.Add("ExpandProperty", "blockdevices");
+            //commands.Add(cmd);
+
+            //cmd = new Command("Where-Object");
+            //cmd.Parameters.Add("Property", "hctl");
+            //cmd.Parameters.Add("eq");
+            //cmd.Parameters.Add("Value", $"{request.ControllerNumber}:0:0:{request.ControllerLocation}");
+            //commands.Add(cmd);
+            
+            //dynamic deviceInfo = await _power.InvokeAsync(commands).FirstOrDefaultAsync(cancellationToken);
+            ///*
+            //name       : sdb1
+            //fstype     : ext4
+            //label      : volume-test-01
+            //uuid       : 7c8ee2c4-7583-4c0b-ad7f-f0a829e0344f
+            //mountpoint :
+            // */
+
+            //centos 7
+            cmd = new Command("lsblk -S -o 'HCTL,NAME' -nr", true);
             commands.Add(cmd);
-
-            cmd = new Command("ConvertFrom-Json");
-            commands.Add(cmd);
-
-            cmd = new Command("Select-Object");
-            cmd.Parameters.Add("ExpandProperty", "blockdevices");
-            commands.Add(cmd);
-
-            cmd = new Command("Where-Object");
-            cmd.Parameters.Add("Property", "hctl");
-            cmd.Parameters.Add("eq");
-            cmd.Parameters.Add("Value", $"{request.ControllerNumber}:0:0:{request.ControllerLocation}");
-            commands.Add(cmd);
-
-            dynamic deviceInfo = await _power.InvokeAsync(commands).FirstOrDefaultAsync(cancellationToken);
-            /*
-            name       : sdb1
-            fstype     : ext4
-            label      : volume-test-01
-            uuid       : 7c8ee2c4-7583-4c0b-ad7f-f0a829e0344f
-            mountpoint :
-             */
-
+            
+            var hctl = $"{request.ControllerNumber}:0:0:{request.ControllerLocation}";
+            var deviceInfo = await _power.InvokeAsync(commands)
+                        .Select((dynamic n) => (string[])n.Split(" ", 2, StringSplitOptions.RemoveEmptyEntries))
+                        .Where(n => n.Length == 2 && n[0] == hctl)
+                        .Select(n => new
+                        {
+                            hctl = n[0],
+                            name = n[1]
+                        })
+                        .FirstOrDefaultAsync(cancellationToken);            
 
             if (deviceInfo is null)
                 throw new System.Exception("device not found");
@@ -129,30 +144,37 @@ namespace HypervCsiDriver.Infrastructure
             
             commands.Clear();
 
+            //centos8
             //lsblk /dev/sdb -fJ | ConvertFrom-Json | Select -ExpandProperty blockdevices | Select-Object -ExpandProperty children
-            cmd = new Command($"lsblk /dev/{deviceName} -fJ", true);
-            commands.Add(cmd);
+            //cmd = new Command($"lsblk /dev/{deviceName} -fJ", true);
+            //commands.Add(cmd);
 
-            cmd = new Command("ConvertFrom-Json");
-            commands.Add(cmd);
+            //cmd = new Command("ConvertFrom-Json");
+            //commands.Add(cmd);
 
-            cmd = new Command("Select-Object");
-            cmd.Parameters.Add("ExpandProperty", "blockdevices");
-            commands.Add(cmd);
+            //cmd = new Command("Select-Object");
+            //cmd.Parameters.Add("ExpandProperty", "blockdevices");
+            //commands.Add(cmd);
 
-            cmd = new Command("Select-Object");
-            cmd.Parameters.Add("ExpandProperty", "children");
-            cmd.Parameters.Add("ErrorAction", "SilentlyContinue");
+            //cmd = new Command("Select-Object");
+            //cmd.Parameters.Add("ExpandProperty", "children");
+            //cmd.Parameters.Add("ErrorAction", "SilentlyContinue");
+            //commands.Add(cmd);
+
+            cmd = new Command($"lsblk /dev/{deviceName} -f -nro 'NAME,FSTYPE,LABEL,UUID,MOUNTPOINT'", true);
             commands.Add(cmd);
 
             var partInfo = await _power.InvokeAsync(commands)
-                .Select((dynamic n) => new
+                .Skip(1) //deviceName
+                .Select((dynamic n) => (string[])n.Split(" ", 5))
+                .Select(n => n.Concat(Enumerable.Repeat(string.Empty, 5-n.Length)).ToList())
+                .Select(n => new
                 {
-                    Name = (string)n.name,
-                    FSType = n.fstype as string,
-                    Label = n.label as string,
-                    UUID = n.uuid as string,
-                    Mountpoint = n.mountpoint as string,
+                    Name = n[0],
+                    FSType = n[1],
+                    Label = n[2],
+                    UUID = n[3],
+                    Mountpoint = n[4],
                 })
                 .FirstOrDefaultAsync(cancellationToken);
             /*
@@ -181,14 +203,14 @@ namespace HypervCsiDriver.Infrastructure
                 var result = await _power.InvokeAsync(commands).ToListAsync(cancellationToken);
             }
 
-            if (partInfo?.FSType is null)
+            if (string.IsNullOrEmpty(partInfo?.FSType))
             {
                 commands.Clear();
 
                 var devicePath = $"/dev/{deviceName}1";
 
                 //mkfs -t ext4 -G 4096 -L volume-test /dev/sdb1
-                var script = $"& mkfs -t {fsType} -L volume-{request.Name} {devicePath} 2>&1";
+                var script = $"& mkfs -t {fsType} -L {request.Name} {devicePath} 2>&1";
                 //maybe add -G 4096
 
 
@@ -202,7 +224,7 @@ namespace HypervCsiDriver.Infrastructure
                 var result = await _power.InvokeAsync(commands).ToListAsync(cancellationToken);
             }
 
-            if(partInfo?.Mountpoint is null)
+            if(string.IsNullOrEmpty(partInfo?.Mountpoint))
             {
                 if (!string.IsNullOrEmpty(partInfo?.FSType) && partInfo.FSType != fsType)
                     throw new Exception("fsType ambiguous");

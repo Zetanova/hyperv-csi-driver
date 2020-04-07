@@ -27,4 +27,10 @@
     <ProjectReference Include="..\hyperv-csi-driver\HypervCsiDriver.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="data\kvp.bin">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

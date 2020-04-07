@@ -72,7 +72,7 @@ namespace HypervCsiDriver.Infrastructure
 
         readonly PNetPowerShell _power;
 
-        LinuxNodeService(IOptions<HypervCsiDriverOptions> options)
+        public LinuxNodeService(IOptions<HypervCsiDriverOptions> options)
         {
             _options = options.Value;
 
@@ -212,8 +212,7 @@ namespace HypervCsiDriver.Infrastructure
                 //mkfs -t ext4 -G 4096 -L volume-test /dev/sdb1
                 var script = $"& mkfs -t {fsType} -L {request.Name} {devicePath} 2>&1";
                 //maybe add -G 4096
-
-
+                
                 cmd = new Command(script, true);
                 commands.Add(cmd);
 

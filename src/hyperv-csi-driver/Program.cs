@@ -46,6 +46,10 @@ namespace HypervCsiDriver
                                 //});
                                 opt.Listen(IPAddress.Loopback, 5216, o =>
                                 {
+                                    o.UseConnectionLogging("CSI");
+
+                                    //o.UseHttps("mycert.pfx", "pass1234");
+
                                     o.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http2;
                                 });
                             } 

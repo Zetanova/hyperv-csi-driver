@@ -25,4 +25,10 @@
     <PackageReference Include="System.Reactive.Linq" Version="4.3.2" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="mycert.pfx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

@@ -71,7 +71,17 @@ The volume property "Storage" is to specify the CSV by name.
 ### Kubernetes Node
 centos/rhel:
 ```
-yum install -y hyperv-daemons
+#install hyperv kvp daemon
+sudo yum install -y hyperv-daemons
+
+#install pwsh
+curl https://packages.microsoft.com/config/rhel/7/prod.repo | sudo tee /etc/yum.repos.d/microsoft.repo
+sudo yum install -y powershell
+
+#edit /etc/ssh/sshd_config
+#add: Subsystem powershell /usr/bin/pwsh -sshs -NoLogo -NoProfile
+
+sudo shutdown -r now
 ```
 
 Optional add to all kubernetes VM's up to 4 scsi controllers 
@@ -92,6 +102,8 @@ ssh-keyscan -H -t ed25519 server1.domain.local server2.domain.local >> ~/path/to
 create a ssh secret and deploy the driver
 ```
 kubectl create secret generic csi-hyperv-key --from-file=id_ed25519=~/path/to/local-ssh-keys --from-file=known_hosts=~/path/to/known_hosts
+
+kubectl create configmap csi-nginx-config --from-file=./deploy/kubernetes-1.15/csi-hyperv/csi-nginx.conf
 
 #static namespace csi-hyperv
 kubectl apply -f .\deploy\kubernetes-1.15\csi-hyperv\rbac.yaml

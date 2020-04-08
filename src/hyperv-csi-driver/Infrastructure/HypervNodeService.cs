@@ -216,7 +216,7 @@ namespace HypervCsiDriver.Infrastructure
                     label = label.Substring(0, 16);
 
                 //mkfs -t ext4 -G 4096 -L volume-test /dev/sdb1
-                var script = $"& mkfs -t {fsType} -L {label} {devicePath} 2>&1";
+                var script = $"& mkfs -t {fsType} -L \"{label}\" {devicePath} 2>&1";
                 //maybe add -G 4096
 
                 cmd = new Command(script, true);

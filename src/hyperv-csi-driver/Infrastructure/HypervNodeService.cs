@@ -209,8 +209,14 @@ namespace HypervCsiDriver.Infrastructure
 
                 var devicePath = $"/dev/{deviceName}1";
 
+                var label = request.Name ?? string.Empty;
+
+                //labels are max 16-chars long (maybe for xfs max 12) 
+                if (label.Length > 16)
+                    label = label.Substring(0, 16);
+
                 //mkfs -t ext4 -G 4096 -L volume-test /dev/sdb1
-                var script = $"& mkfs -t {fsType} -L {request.Name} {devicePath} 2>&1";
+                var script = $"& mkfs -t {fsType} -L {label} {devicePath} 2>&1";
                 //maybe add -G 4096
 
                 cmd = new Command(script, true);
@@ -245,6 +251,9 @@ namespace HypervCsiDriver.Infrastructure
 
                 cmd = new Command(script, true);
                 commands.Add(cmd);
+
+                //Labels are normaly only 16-chars long
+                //Warning: label too long; will be truncated to 'pvc-5a344250-ca2'
 
                 var result = await _power.InvokeAsync(commands).ThrowOnError()
                     .ToListAsync(cancellationToken);

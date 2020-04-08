@@ -74,8 +74,21 @@ namespace PNet.Automation
                     //.ObserveOn(TaskPoolScheduler.Default) //maybe not required
                     .Subscribe(n =>
                     {
-                        var error = n as ErrorRecord; //todo collect errors
-                        o.OnError(error.Exception);
+                        switch(n)
+                        {
+                            case PSObject ps: //todo switch for termiating error 
+                                o.OnNext(ps); //none termiating error
+                                break;
+                            case ErrorRecord error:                                 
+                                o.OnError(error.Exception);
+                                break;
+                            case null:
+                                o.OnError(new Exception("null error"));
+                                break;
+                            default:
+                                o.OnError(new Exception($"error[{n.GetType()}] {n}"));
+                                break;
+                        }                        
                     });
 
                 //todo merge output and input stream

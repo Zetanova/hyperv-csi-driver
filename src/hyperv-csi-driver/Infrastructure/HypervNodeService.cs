@@ -76,10 +76,10 @@ namespace HypervCsiDriver.Infrastructure
         {
             _options = options.Value;
 
-            if(string.IsNullOrEmpty(_options.HostName)) //local
-                _power = new PNetPowerShell(); 
+            if (string.IsNullOrEmpty(_options.HostName)) //local
+                _power = new PNetPowerShell();
             else //remote for debug
-                _power = new PNetPowerShell(_options.HostName, _options.UserName, _options.KeyFile); 
+                _power = new PNetPowerShell(_options.HostName, _options.UserName, _options.KeyFile);
         }
 
         public LinuxNodeService(string hostName, string userName, string keyFile = null)
@@ -109,7 +109,7 @@ namespace HypervCsiDriver.Infrastructure
             //cmd.Parameters.Add("eq");
             //cmd.Parameters.Add("Value", $"{request.ControllerNumber}:0:0:{request.ControllerLocation}");
             //commands.Add(cmd);
-            
+
             //dynamic deviceInfo = await _power.InvokeAsync(commands).FirstOrDefaultAsync(cancellationToken);
             ///*
             //name       : sdb1
@@ -122,9 +122,9 @@ namespace HypervCsiDriver.Infrastructure
             //centos 7
             cmd = new Command("lsblk -S -o 'HCTL,NAME' -nr", true);
             commands.Add(cmd);
-            
+
             var hctl = $"{request.ControllerNumber}:0:0:{request.ControllerLocation}";
-            var deviceInfo = await _power.InvokeAsync(commands)
+            var deviceInfo = await _power.InvokeAsync(commands).ThrowOnError()
                         .Select((dynamic n) => (string[])n.Split(" ", 2, StringSplitOptions.RemoveEmptyEntries))
                         .Where(n => n.Length == 2 && n[0] == hctl)
                         .Select(n => new
@@ -132,7 +132,7 @@ namespace HypervCsiDriver.Infrastructure
                             hctl = n[0],
                             name = n[1]
                         })
-                        .FirstOrDefaultAsync(cancellationToken);            
+                        .FirstOrDefaultAsync(cancellationToken);
 
             if (deviceInfo is null)
                 throw new System.Exception("device not found");
@@ -141,7 +141,7 @@ namespace HypervCsiDriver.Infrastructure
 
             if (request.Raw)
                 throw new NotImplementedException("raw block device not implemented");
-            
+
             commands.Clear();
 
             //centos8
@@ -164,10 +164,10 @@ namespace HypervCsiDriver.Infrastructure
             cmd = new Command($"lsblk /dev/{deviceName} -f -nro 'NAME,FSTYPE,LABEL,UUID,MOUNTPOINT'", true);
             commands.Add(cmd);
 
-            var partInfo = await _power.InvokeAsync(commands)
+            var partInfo = await _power.InvokeAsync(commands).ThrowOnError()
                 .Skip(1) //deviceName
                 .Select((dynamic n) => (string[])n.Split(" ", 5))
-                .Select(n => n.Concat(Enumerable.Repeat(string.Empty, 5-n.Length)).ToList())
+                .Select(n => n.Concat(Enumerable.Repeat(string.Empty, 5 - n.Length)).ToList())
                 .Select(n => new
                 {
                     Name = n[0],
@@ -189,7 +189,7 @@ namespace HypervCsiDriver.Infrastructure
 
             var fsType = !string.IsNullOrEmpty(request.FSType) ? request.FSType : "ext4";
 
-            if(partInfo is null)
+            if (partInfo is null)
             {
                 commands.Clear();
 
@@ -200,7 +200,7 @@ namespace HypervCsiDriver.Infrastructure
                 cmd = new Command(script, true);
                 commands.Add(cmd);
 
-                var result = await _power.InvokeAsync(commands).ToListAsync(cancellationToken);
+                var result = await _power.InvokeAsync(commands).ThrowOnError().ToListAsync(cancellationToken);
             }
 
             if (string.IsNullOrEmpty(partInfo?.FSType))
@@ -212,7 +212,7 @@ namespace HypervCsiDriver.Infrastructure
                 //mkfs -t ext4 -G 4096 -L volume-test /dev/sdb1
                 var script = $"& mkfs -t {fsType} -L {request.Name} {devicePath} 2>&1";
                 //maybe add -G 4096
-                
+
                 cmd = new Command(script, true);
                 commands.Add(cmd);
 
@@ -220,10 +220,10 @@ namespace HypervCsiDriver.Infrastructure
                 ////cmd.Parameters.Add("NoNewline");
                 //commands.Add(cmd);
 
-                var result = await _power.InvokeAsync(commands).ToListAsync(cancellationToken);
+                var result = await _power.InvokeAsync(commands).ThrowOnError().ToListAsync(cancellationToken);
             }
 
-            if(string.IsNullOrEmpty(partInfo?.Mountpoint))
+            if (string.IsNullOrEmpty(partInfo?.Mountpoint))
             {
                 if (!string.IsNullOrEmpty(partInfo?.FSType) && partInfo.FSType != fsType)
                     throw new Exception("fsType ambiguous");
@@ -246,7 +246,8 @@ namespace HypervCsiDriver.Infrastructure
                 cmd = new Command(script, true);
                 commands.Add(cmd);
 
-                var result = await _power.InvokeAsync(commands).ToListAsync(cancellationToken);
+                var result = await _power.InvokeAsync(commands).ThrowOnError()
+                    .ToListAsync(cancellationToken);
             }
             else
             {
@@ -271,7 +272,7 @@ namespace HypervCsiDriver.Infrastructure
             cmd = new Command($"umount {request.TargetPath}", true);
             commands.Add(cmd);
 
-            var result = await _power.InvokeAsync(commands).FirstOrDefaultAsync(cancellationToken);
+            var result = await _power.InvokeAsync(commands).ThrowOnError().FirstOrDefaultAsync(cancellationToken);
         }
 
         public async Task PublishDeviceAsync(HypervNodePublishRequest request, CancellationToken cancellationToken = default)
@@ -286,7 +287,7 @@ namespace HypervCsiDriver.Infrastructure
             //maybe readonly required
             //mount -o remount,ro,bind /target
 
-            var result = await _power.InvokeAsync(commands).FirstOrDefaultAsync(cancellationToken);
+            var result = await _power.InvokeAsync(commands).ThrowOnError().FirstOrDefaultAsync(cancellationToken);
         }
 
         public async Task UnpublishDeviceAsync(HypervNodeUnpublishRequest request, CancellationToken cancellationToken = default)
@@ -298,7 +299,7 @@ namespace HypervCsiDriver.Infrastructure
             cmd = new Command($"umount {request.TargetPath}", true);
             commands.Add(cmd);
 
-            var result = await _power.InvokeAsync(commands).FirstOrDefaultAsync(cancellationToken);
+            var result = await _power.InvokeAsync(commands).ThrowOnError().FirstOrDefaultAsync(cancellationToken);
         }
     }
 }

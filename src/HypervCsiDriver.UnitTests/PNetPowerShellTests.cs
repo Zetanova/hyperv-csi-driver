@@ -90,7 +90,7 @@ namespace HypervCsiDriver.UnitTests
             cmd.Parameters.Add("Property", new[] { "Id", "Name", "State" });
             commands.Add(cmd);
 
-            var vmItems = power.InvokeAsync(commands);
+            var vmItems = power.InvokeAsync(commands).ThrowOnError();
             /*
             Name             : Lnx1234
             State            : Running

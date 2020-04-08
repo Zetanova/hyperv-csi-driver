@@ -238,7 +238,7 @@ namespace HypervCsiDriver.Infrastructure
             //todo ParentPath, FragmentationPercentage, VHDFormat
             commands.Add(cmd);
 
-            dynamic item = await _power.InvokeAsync(commands).FirstAsync(cancellationToken);
+            dynamic item = await _power.InvokeAsync(commands).ThrowOnError().FirstAsync(cancellationToken);
            
             return new HypervVolumeDetail
             {
@@ -288,7 +288,7 @@ namespace HypervCsiDriver.Infrastructure
             cmd = new Command("Remove-Item");
             commands.Add(cmd);
 
-            var result = await _power.InvokeAsync(commands).FirstOrDefaultAsync(cancellationToken);
+            var result = await _power.InvokeAsync(commands).ThrowOnError().FirstOrDefaultAsync(cancellationToken);
 
             //todo check result
         }
@@ -365,7 +365,7 @@ namespace HypervCsiDriver.Infrastructure
             cmd.Parameters.Add("Property", new[] { "BaseName", "FullName", "Length" });
             commands.Add(cmd);
 
-            return _power.InvokeAsync(commands)
+            return _power.InvokeAsync(commands).ThrowOnError()
                 .Select((dynamic n) => new HypervVolumeInfo
                 {
                     Name = n.BaseName,
@@ -392,7 +392,7 @@ namespace HypervCsiDriver.Infrastructure
             cmd.Parameters.Add("Property", new[] { "Id", "Name", "ComputerName" });
             commands.Add(cmd);
 
-            return _power.InvokeAsync(commands)
+            return _power.InvokeAsync(commands).ThrowOnError()
                 .Select((dynamic n) => new HypervVirtualMachineInfo
                 {
                     Id = n.Id,
@@ -434,7 +434,7 @@ namespace HypervCsiDriver.Infrastructure
             });            
             commands.Add(cmd);
 
-            dynamic item = await _power.InvokeAsync(commands).FirstAsync(cancellationToken);
+            dynamic item = await _power.InvokeAsync(commands).ThrowOnError().FirstAsync(cancellationToken);
 
             return new HypervVirtualMachineVolumeInfo
             {
@@ -479,7 +479,7 @@ namespace HypervCsiDriver.Infrastructure
             //cmd.Parameters.Add("Passthru");
             commands.Add(cmd);
 
-            var result = await _power.InvokeAsync(commands).FirstOrDefaultAsync(cancellationToken);
+            var result = await _power.InvokeAsync(commands).ThrowOnError().FirstOrDefaultAsync(cancellationToken);
         }
 
         public IAsyncEnumerable<HypervVirtualMachineVolumeInfo> GetVirtualMachineVolumesAsync(Guid vmId, HypervVirtualMachineVolumeFilter filter)
@@ -517,7 +517,7 @@ namespace HypervCsiDriver.Infrastructure
             });
             commands.Add(cmd);
 
-            return _power.InvokeAsync(commands)
+            return _power.InvokeAsync(commands).ThrowOnError()
                 .Select((dynamic n) => new HypervVirtualMachineVolumeInfo
                 {
                     VMId = n.VMId,
@@ -552,7 +552,7 @@ namespace HypervCsiDriver.Infrastructure
             });
             commands.Add(cmd);
 
-            return _power.InvokeAsync(commands)
+            return _power.InvokeAsync(commands).ThrowOnError()
                 .Select((dynamic n) => new HypervVolumeFlowInfo
                 {
                     VMId = n.InitiatorId,

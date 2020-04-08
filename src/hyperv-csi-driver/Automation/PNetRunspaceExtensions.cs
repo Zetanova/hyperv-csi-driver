@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Management.Automation;
 using System.Management.Automation.Runspaces;
 using System.Reactive.Linq;
+using System.Runtime.ExceptionServices;
 
 namespace PNet.Automation
 {
@@ -53,5 +55,58 @@ namespace PNet.Automation
                 return pipe.ToObservable();
             });
         }
+
+        public static async IAsyncEnumerable<PSObject> UntilError(this IAsyncEnumerable<PSObject> source)
+        {
+            await foreach(var msg in source)
+            {
+                yield return msg;
+                if (msg.BaseObject is ErrorRecord)
+                    yield break;
+            }
+        }
+
+        public static async IAsyncEnumerable<PSObject> UntilError(this IAsyncEnumerable<PSObject> source, Predicate<ErrorRecord> terminate)
+        {
+            await foreach (var msg in source)
+            {
+                yield return msg;
+                if (msg.BaseObject is ErrorRecord error && terminate(error))
+                    yield break;
+            }
+        }
+
+        public static async IAsyncEnumerable<PSObject> ThrowOnError(this IAsyncEnumerable<PSObject> source)
+        {
+            await foreach (var msg in source)
+            {
+                if (msg.BaseObject is ErrorRecord error)
+                {
+                    ExceptionDispatchInfo.Capture(error.Exception).Throw();
+                    yield break;
+                } 
+                else
+                {
+                    yield return msg;
+                }
+            }
+        }
+
+        public static async IAsyncEnumerable<PSObject> ThrowOnError(this IAsyncEnumerable<PSObject> source, Predicate<ErrorRecord> terminate)
+        {
+            await foreach (var msg in source)
+            {
+                if (msg.BaseObject is ErrorRecord error && terminate(error))
+                { 
+                    ExceptionDispatchInfo.Capture(error.Exception).Throw();
+                    yield break;
+                }
+                else
+                {
+                    yield return msg;
+                }
+            }
+        }
+
     }
 }

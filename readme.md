@@ -103,8 +103,6 @@ create a ssh secret and deploy the driver
 ```
 kubectl create secret generic csi-hyperv-key --from-file=id_ed25519=~/path/to/local-ssh-keys --from-file=known_hosts=~/path/to/known_hosts
 
-kubectl create configmap csi-nginx-config --from-file=./deploy/kubernetes-1.15/csi-hyperv/csi-nginx.conf
-
 #static namespace csi-hyperv
 kubectl apply -f .\deploy\kubernetes-1.15\csi-hyperv\rbac.yaml
 kubectl apply -f .\deploy\kubernetes-1.15\csi-hyperv\controller.yaml

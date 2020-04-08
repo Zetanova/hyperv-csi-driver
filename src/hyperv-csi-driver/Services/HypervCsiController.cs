@@ -1,6 +1,7 @@
 using csi;
 using Grpc.Core;
 using HypervCsiDriver.Infrastructure;
+using HypervCsiDriver.Utils;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Linq;
@@ -202,7 +203,13 @@ namespace HypervCsiDriver
 
         public override async Task<DeleteVolumeResponse> DeleteVolume(DeleteVolumeRequest request, ServerCallContext context)
         {
-            var foundVolumes = await _service.GetVolumesAsync(new HypervVolumeFilter { Name = request.VolumeId })
+            var volumeName = request.VolumeId;
+
+            //tmp fix to remove bad pvc name
+            if (volumeName.StartsWith("C:\\"))
+                volumeName = HypervUtils.GetFileNameWithoutExtension(volumeName);
+
+            var foundVolumes = await _service.GetVolumesAsync(new HypervVolumeFilter { Name = volumeName })
                 .ToListAsync(context.CancellationToken);
 
             if (foundVolumes.Count > 1)
@@ -348,9 +355,15 @@ namespace HypervCsiDriver
 
         public override async Task<ControllerUnpublishVolumeResponse> ControllerUnpublishVolume(ControllerUnpublishVolumeRequest request, ServerCallContext context)
         {
+            var volumeName = request.VolumeId;
+
+            //tmp fix to remove bad pvc name
+            if (volumeName.StartsWith("C:\\"))
+                volumeName = HypervUtils.GetFileNameWithoutExtension(volumeName);
+
             var foundVolume = await _service.GetVolumesAsync(new HypervVolumeFilter
             {
-                Name = request.VolumeId
+                Name = volumeName
             })
             .FirstOrDefaultAsync(context.CancellationToken);
 

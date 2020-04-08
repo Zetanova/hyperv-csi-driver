@@ -83,7 +83,8 @@ namespace HypervCsiDriver.UnitTests
         }
 
         [Theory]
-        [InlineData("sv1505", "hv05", "test_create-01")]
+        //[InlineData("sv1505", "hv05", "test_create-01")]
+        [InlineData("sv1505", "", "test_create-02")]
         public async Task create_delete_volume(string hostName, string storageName, string volumeName)
         {
             var service = await Fixture.GetHypervVolumeSerivceAsync(hostName);
@@ -100,12 +101,18 @@ namespace HypervCsiDriver.UnitTests
                 if (info != default)
                 {
                     Assert.Equal(volumeName, info.Name);
-                    Assert.Equal(storageName, info.Storage);
+                    Assert.NotEqual(string.Empty, info.Storage);
+                    if (!string.IsNullOrEmpty(storageName))
+                        Assert.Equal(storageName, info.Storage);
+                        
 
                     var detail = await service.GetVolumeAsync(info.Path);
 
                     Assert.Equal(volumeName, detail.Name);
-                    Assert.Equal(storageName, detail.Storage);
+
+                    Assert.NotEqual(string.Empty, detail.Storage);
+                    if (!string.IsNullOrEmpty(storageName))
+                        Assert.Equal(storageName, detail.Storage);
 
                     await service.DeleteVolumeAsync(new HypervDeleteVolumeRequest
                     {
@@ -122,9 +129,11 @@ namespace HypervCsiDriver.UnitTests
             });
 
             Assert.Equal(volumeName, volume.Name);
-            Assert.Equal(storageName, volume.Storage);
+            Assert.NotEqual(string.Empty, volume.Storage);
+            if (!string.IsNullOrEmpty(storageName))
+                Assert.Equal(storageName, volume.Storage);
 
-            Assert.Equal(10UL * 1024UL * 1024UL, volume.SizeBytes); //10GB
+            //Assert.Equal(10UL * 1024UL * 1024UL, volume.SizeBytes); //1GB
             Assert.True(volume.FileSizeBytes <= volume.SizeBytes);
             Assert.True(volume.FileSizeBytes > 0);
             Assert.NotEqual(Guid.Empty, volume.Id);

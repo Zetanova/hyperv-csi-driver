@@ -60,5 +60,33 @@ namespace HypervCsiDriver.Utils
                 await file.DisposeAsync();
             }
         }
+
+        public static string GetFileNameWithoutExtension(string filePath)
+        {
+            var slice = filePath.AsSpan();
+
+            int i = slice.LastIndexOf('\\');
+            if (i > 0)
+                slice = slice.Slice(i + 1);
+
+            i = slice.IndexOf('.');
+            if (i > 0)
+                slice = slice.Slice(0, i);
+
+            return slice.ToString();
+        }
+
+        public static string GetStorageNameFromPath(string path)
+        {
+            //var path = $@"{HypervDefaults.ClusterStoragePath}\{storage}\Volumes\{name}.vhdx";
+
+            var parts = path.Split('\\');
+            for (int i = 1; i < parts.Length; i++)
+            {
+                if (StringComparer.OrdinalIgnoreCase.Equals(parts[i], "Volumes"))
+                    return parts[i - 1];
+            }
+            return string.Empty;
+        }
     }
 }

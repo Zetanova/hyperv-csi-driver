@@ -1,6 +1,6 @@
+using csi;
 using Grpc.Core;
 using HypervCsiDriver.Infrastructure;
-using csi;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Linq;
@@ -143,12 +143,11 @@ namespace HypervCsiDriver
             //todo request.VolumeContentSource
 
             var foundVolumes = await _service.GetVolumesAsync(new HypervVolumeFilter { Name = name }).ToListAsync(context.CancellationToken);
-
-            HypervVolumeDetail volume = null;
-
             if (foundVolumes.Count > 1)
                 throw new RpcException(new Status(StatusCode.AlreadyExists, string.Empty), "volume name ambiguous");
 
+
+            HypervVolumeDetail volume;
             if (foundVolumes.Count == 1)
             {
                 var foundVolume = foundVolumes[0];
@@ -278,7 +277,7 @@ namespace HypervCsiDriver
                     "volume not found");
 
             var vmId = Guid.Parse(request.NodeId);
-            
+
             //var volumePath = request.VolumeContext["Path"];
 
             HypervVirtualMachineVolumeInfo vmVolume;

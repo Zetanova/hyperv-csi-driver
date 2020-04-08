@@ -1,4 +1,5 @@
-﻿using PNet.Automation;
+﻿using HypervCsiDriver.Utils;
+using PNet.Automation;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -210,11 +211,15 @@ namespace HypervCsiDriver.Infrastructure
             if (request.Shared)
                 throw new NotImplementedException("shared disk not implemented");
 
+            var name = request.Name;
             var storage = !string.IsNullOrEmpty(request.Storage) 
                     ? request.Storage 
                     : await FindFreeStoragesAsync(request.SizeBytes).FirstAsync();
 
-            var path = $@"{HypervDefaults.ClusterStoragePath}\{storage}\Volumes\{request.Name}.vhdx";
+            //handle windows Path under linux
+            storage = storage.ToLower();
+
+            var path = $@"{HypervDefaults.ClusterStoragePath}\{storage}\Volumes\{name}.vhdx";
 
             Command cmd;
             var commands = new List<Command>(2);
@@ -234,11 +239,12 @@ namespace HypervCsiDriver.Infrastructure
             commands.Add(cmd);
 
             dynamic item = await _power.InvokeAsync(commands).FirstAsync(cancellationToken);
-
+           
             return new HypervVolumeDetail
             {
                 Id = Guid.Parse((string)item.DiskIdentifier),
-                Name = Path.GetFileNameWithoutExtension((string)item.Path),
+                //Name = Path.GetFileNameWithoutExtension((string)item.Path),
+                Name = name,
                 Path = item.Path,
                 FileSizeBytes = item.FileSize,
                 SizeBytes = item.Size,
@@ -249,7 +255,8 @@ namespace HypervCsiDriver.Infrastructure
                     "Dynamic" => true,
                     _ => false
                 },
-                Storage = Directory.GetParent((string)item.Path).Parent.Name,
+                //Storage = Directory.GetParent((string)item.Path).Parent.Name,
+                Storage = storage,
                 Shared = false //todo .vhds                    
             };
         }
@@ -312,7 +319,7 @@ namespace HypervCsiDriver.Infrastructure
             return new HypervVolumeDetail
             {
                 Id = Guid.Parse((string)item.DiskIdentifier),
-                Name = Path.GetFileNameWithoutExtension((string)item.Path),
+                Name = HypervUtils.GetFileNameWithoutExtension((string)item.Path),
                 Path = item.Path,
                 FileSizeBytes = item.FileSize,
                 SizeBytes = item.Size,
@@ -323,7 +330,7 @@ namespace HypervCsiDriver.Infrastructure
                     "Dynamic" => true,
                     _ => false
                 },
-                Storage = Directory.GetParent((string)item.Path).Parent.Name,
+                Storage = HypervUtils.GetStorageNameFromPath((string)item.Path),
                 Shared = false //todo .vhds                    
             };
         }
@@ -364,7 +371,7 @@ namespace HypervCsiDriver.Infrastructure
                     Name = n.BaseName,
                     Path = n.FullName,
                     FileSizeBytes = n.Length,
-                    Storage = Directory.GetParent((string)n.FullName).Parent.Name,
+                    Storage = HypervUtils.GetStorageNameFromPath(n.FullName),
                     Shared = false //todo .vhds                    
                 });       
         }
@@ -433,7 +440,7 @@ namespace HypervCsiDriver.Infrastructure
             {
                 VMId = item.VMId,
                 VMName = item.VMName,
-                VolumeName = Path.GetFileNameWithoutExtension((string)item.Path),
+                VolumeName = HypervUtils.GetFileNameWithoutExtension((string)item.Path),
                 VolumePath = item.Path,
                 Host = item.ComputerName,
                 ControllerNumber = item.ControllerNumber,
@@ -515,7 +522,7 @@ namespace HypervCsiDriver.Infrastructure
                 {
                     VMId = n.VMId,
                     VMName = n.VMName,
-                    VolumeName = Path.GetFileNameWithoutExtension((string)n.Path),
+                    VolumeName = HypervUtils.GetFileNameWithoutExtension((string)n.Path),
                     VolumePath = n.Path,
                     Host = n.ComputerName,
                     ControllerNumber = n.ControllerNumber,

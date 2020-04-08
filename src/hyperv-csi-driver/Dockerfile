@@ -3,7 +3,8 @@
 FROM mcr.microsoft.com/dotnet/core/aspnet:3.1-buster-slim AS base
 RUN apt-get update && apt-get install -y \
 	openssh-client \
-	parted udev \
+	parted \
+	#udev \
 	&& rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 #EXPOSE 80

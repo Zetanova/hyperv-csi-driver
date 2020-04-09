@@ -339,10 +339,10 @@ namespace HypervCsiDriver.Infrastructure
             var commands = new List<Command>(1);
 
             //umount /drivetest
-            cmd = new Command($"umount {request.TargetPath}", true);
+            cmd = new Command($"& umount {request.TargetPath} 2>&1", true);
             commands.Add(cmd);
 
-            var result = await _power.InvokeAsync(commands).ThrowOnError()
+            var result = await _power.InvokeAsync(commands)
                 .FirstOrDefaultAsync(cancellationToken);
 
             commands.Clear();

@@ -274,8 +274,10 @@ namespace HypervCsiDriver.Infrastructure
                 //cmd = new Command("Out-String");
                 ////cmd.Parameters.Add("NoNewline");
                 //commands.Add(cmd);
-
-                var result = await _power.InvokeAsync(commands).ThrowOnError().ToListAsync(cancellationToken);
+                
+                var results = await _power.InvokeAsync(commands)
+                    .ThrowOnError(error => error.Exception is null || !error.Exception.Message.StartsWith("mke2fs"))
+                    .ToListAsync(cancellationToken);
 
                 deviceFSType = fsType;
             } 

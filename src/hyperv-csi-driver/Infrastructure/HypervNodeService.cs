@@ -298,6 +298,17 @@ namespace HypervCsiDriver.Infrastructure
             {
                 commands.Clear();
 
+                cmd = new Command("New-Item");
+                cmd.Parameters.Add("ItemType", "directory");
+                cmd.Parameters.Add("Path", request.TargetPath);
+                cmd.Parameters.Add("ErrorAction", "SilentlyContinue");
+                commands.Add(cmd);
+
+                var result = await _power.InvokeAsync(commands).ThrowOnError()
+                    .ToListAsync(cancellationToken);
+
+                commands.Clear();
+
                 var options = new HashSet<string> { "discard", "noatime" };
 
                 foreach (var opt in (request.Options ?? Array.Empty<string>()))
@@ -315,7 +326,7 @@ namespace HypervCsiDriver.Infrastructure
                 //Labels are normaly only 16-chars long
                 //Warning: label too long; will be truncated to 'pvc-5a344250-ca2'
 
-                var result = await _power.InvokeAsync(commands).ThrowOnError()
+                result = await _power.InvokeAsync(commands).ThrowOnError()
                     .ToListAsync(cancellationToken);
 
                 mountpoint = request.TargetPath;
@@ -331,7 +342,18 @@ namespace HypervCsiDriver.Infrastructure
             cmd = new Command($"umount {request.TargetPath}", true);
             commands.Add(cmd);
 
-            var result = await _power.InvokeAsync(commands).ThrowOnError().FirstOrDefaultAsync(cancellationToken);
+            var result = await _power.InvokeAsync(commands).ThrowOnError()
+                .FirstOrDefaultAsync(cancellationToken);
+
+            commands.Clear();
+
+            cmd = new Command("Remove-Item");
+            cmd.Parameters.Add("Path", request.TargetPath);
+            cmd.Parameters.Add("ErrorAction", "SilentlyContinue");
+            commands.Add(cmd);
+
+            result = await _power.InvokeAsync(commands).ThrowOnError()
+                .FirstOrDefaultAsync(cancellationToken);
         }
 
         public async Task PublishDeviceAsync(HypervNodePublishRequest request, CancellationToken cancellationToken = default)

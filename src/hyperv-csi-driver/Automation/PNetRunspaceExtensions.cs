@@ -12,6 +12,8 @@ namespace PNet.Automation
 
     public static class PNetRunspaceExtensions
     {
+        const string ErrorRecordTypeName = "System.Management.Automation.ErrorRecord";
+
         public static IObservable<T> Pipe<T>(this Runspace runspace, Func<Pipeline, IObservable<T>> func)
         {
             return Observable.Using(runspace.CreatePipeline, func);
@@ -61,7 +63,7 @@ namespace PNet.Automation
             await foreach(var msg in source)
             {
                 yield return msg;
-                if (msg.BaseObject is ErrorRecord)
+                if (msg.BaseObject is ErrorRecord || (msg.BaseObject is null && msg.TypeNames.Contains(ErrorRecordTypeName)))
                     yield break;
             }
         }
@@ -73,6 +75,12 @@ namespace PNet.Automation
                 yield return msg;
                 if (msg.BaseObject is ErrorRecord error && terminate(error))
                     yield break;
+                else if (msg.BaseObject is null && msg.TypeNames.Contains(ErrorRecordTypeName))
+                {
+                    error = (ErrorRecord)(msg as dynamic);
+                    if (terminate(error))
+                        yield break;
+                }
             }
         }
 
@@ -84,7 +92,13 @@ namespace PNet.Automation
                 {
                     ExceptionDispatchInfo.Capture(error.Exception).Throw();
                     yield break;
-                } 
+                }
+                else if (msg.BaseObject is null && msg.TypeNames.Contains(ErrorRecordTypeName))
+                {
+                    Exception ex = (msg as dynamic).Exception;
+                    ExceptionDispatchInfo.Capture(ex).Throw();
+                    yield break;
+                }
                 else
                 {
                     yield return msg;
@@ -97,9 +111,18 @@ namespace PNet.Automation
             await foreach (var msg in source)
             {
                 if (msg.BaseObject is ErrorRecord error && terminate(error))
-                { 
+                {
                     ExceptionDispatchInfo.Capture(error.Exception).Throw();
                     yield break;
+                }
+                else if (msg.BaseObject is null && msg.TypeNames.Contains(ErrorRecordTypeName))
+                {
+                    error = (ErrorRecord)(msg as dynamic);
+                    if(terminate(error))
+                    {
+                        ExceptionDispatchInfo.Capture(error.Exception).Throw();
+                        yield break;
+                    }
                 }
                 else
                 {

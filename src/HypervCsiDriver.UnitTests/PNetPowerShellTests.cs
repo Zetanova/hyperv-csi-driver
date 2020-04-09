@@ -112,5 +112,42 @@ namespace HypervCsiDriver.UnitTests
 
             Assert.NotEmpty(names);
         }
+
+
+        [Fact]
+        public async Task throw_on_errors_from_local_native_commands()
+        {
+            var power = new PNetPowerShell();
+
+            Command cmd;
+            var commands = new List<Command>(2);
+
+            cmd = new Command("& more -?", true);
+            commands.Add(cmd);
+
+            await Assert.ThrowsAsync<System.Management.Automation.RemoteException>(async () =>
+            {
+                var result = await power.InvokeAsync(commands).ThrowOnError()
+                    .FirstOrDefaultAsync();
+            });
+        }
+
+        [Fact]
+        public async Task redirect_stderr_from_local_native_commands()
+        {
+            var power = new PNetPowerShell();
+
+            Command cmd;
+            var commands = new List<Command>(2);
+
+            cmd = new Command("& more -? 2>&1", true);
+            commands.Add(cmd);
+
+            var results = await power.InvokeAsync(commands)
+                    .ToListAsync();
+
+            Assert.NotEmpty(results);
+            Assert.Equal("Cannot access file -?", results.Last());
+        }
     }
 }

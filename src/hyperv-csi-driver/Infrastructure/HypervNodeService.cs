@@ -137,7 +137,7 @@ namespace HypervCsiDriver.Infrastructure
             if (deviceInfo is null)
                 throw new System.Exception("device not found");
 
-            string deviceName = deviceInfo.name;
+            string blockDeviceName = deviceInfo.name;
 
             if (request.Raw)
                 throw new NotImplementedException("raw block device not implemented");
@@ -161,22 +161,24 @@ namespace HypervCsiDriver.Infrastructure
             //cmd.Parameters.Add("ErrorAction", "SilentlyContinue");
             //commands.Add(cmd);
 
-            cmd = new Command($"lsblk /dev/{deviceName} -f -nro 'NAME,FSTYPE,LABEL,UUID,MOUNTPOINT'", true);
-            commands.Add(cmd);
 
-            var partInfo = await _power.InvokeAsync(commands).ThrowOnError()
-                .Skip(1) //deviceName
-                .Select((dynamic n) => (string[])n.Split(" ", 5))
-                .Select(n => n.Concat(Enumerable.Repeat(string.Empty, 5 - n.Length)).ToList())
-                .Select(n => new
-                {
-                    Name = n[0],
-                    FSType = n[1],
-                    Label = n[2],
-                    UUID = n[3],
-                    Mountpoint = n[4],
-                })
-                .FirstOrDefaultAsync(cancellationToken);
+            //not working inside container
+            //cmd = new Command($"lsblk /dev/{deviceName} -f -nro 'NAME,FSTYPE,LABEL,UUID,MOUNTPOINT'", true);
+            //commands.Add(cmd);
+
+            //var partInfo = await _power.InvokeAsync(commands).ThrowOnError()
+            //    .Skip(1) //deviceName
+            //    .Select((dynamic n) => (string[])n.Split(" ", 5))
+            //    .Select(n => n.Concat(Enumerable.Repeat(string.Empty, 5 - n.Length)).ToList())
+            //    .Select(n => new
+            //    {
+            //        Name = n[0],
+            //        FSType = n[1],
+            //        Label = n[2],
+            //        UUID = n[3],
+            //        Mountpoint = n[4],
+            //    })
+            //    .FirstOrDefaultAsync(cancellationToken);
             /*
             name       : sdb1
             fstype     : ext4
@@ -185,17 +187,66 @@ namespace HypervCsiDriver.Infrastructure
             mountpoint :
             */
 
+            var deviceName = $"/dev/{blockDeviceName}1";
+            var deviceLabel = string.Empty;
+            var deviceUUID = string.Empty;
+            var deviceFSType = string.Empty;
+            
+            cmd = new Command($"blkid -o export {deviceName}", true);
+            commands.Add(cmd);
+
+            /*
+                DEVNAME=/dev/sdb1
+                LABEL=pvc-5a344250-ca2
+                UUID=978388ae-6a2e-479a-8658-48ea495adda3
+                TYPE=ext4
+                PARTLABEL=primary
+                PARTUUID=90580121-4dd5-485a-9d07-e20b73cba4bf
+            */
+
+            await foreach(var line in _power.InvokeAsync(commands).ThrowOnError()
+                .Select(n => n.BaseObject).OfType<string>()
+                .TakeWhile(n => !string.IsNullOrEmpty(n))
+                .WithCancellation(cancellationToken))
+            {
+                var name = line;
+                var value = string.Empty;
+
+                int i = line.IndexOf('=');
+                if(i > -1)
+                {
+                    name = line.Substring(0, i);
+                    value = line.Substring(i + 1);
+                }
+
+                switch(name)
+                {
+                    case "DEVNAME" when deviceName != value:
+                        throw new Exception("invalid device info");
+                    case "LABEL":
+                        deviceLabel = value;
+                        break;
+                    case "UUID":
+                        deviceUUID = value;
+                        break;
+                    case "TYPE":
+                        deviceFSType = value;
+                        break;
+                }
+            }
+                  
+
             //todo select multiple partitions
 
             var fsType = !string.IsNullOrEmpty(request.FSType) ? request.FSType : "ext4";
 
-            if (partInfo is null)
+            if (string.IsNullOrEmpty(deviceUUID))
             {
                 commands.Clear();
 
                 //parted /dev/sdb --script mklabel gpt
                 //parted /dev/sdb --script mkpart primary ext4 0% 100%
-                var script = $"parted /dev/{deviceName} --script mklabel gpt mkpart primary {fsType} 0% 100%";
+                var script = $"parted /dev/{blockDeviceName} --script mklabel gpt mkpart primary {fsType} 0% 100%";
 
                 cmd = new Command(script, true);
                 commands.Add(cmd);
@@ -203,20 +254,18 @@ namespace HypervCsiDriver.Infrastructure
                 var result = await _power.InvokeAsync(commands).ThrowOnError().ToListAsync(cancellationToken);
             }
 
-            if (string.IsNullOrEmpty(partInfo?.FSType))
+            if (string.IsNullOrEmpty(deviceFSType))
             {
                 commands.Clear();
 
-                var devicePath = $"/dev/{deviceName}1";
-
-                var label = request.Name ?? string.Empty;
+                deviceLabel = request.Name ?? string.Empty;
 
                 //labels are max 16-chars long (maybe for xfs max 12) 
-                if (label.Length > 16)
-                    label = label.Substring(0, 16);
+                if (deviceLabel.Length > 16)
+                    deviceLabel = deviceLabel.Substring(0, 16);
 
                 //mkfs -t ext4 -G 4096 -L volume-test /dev/sdb1
-                var script = $"& mkfs -t {fsType} -L \"{label}\" {devicePath} 2>&1";
+                var script = $"& mkfs -t {fsType} -L \"{deviceLabel}\" {deviceName} 2>&1";
                 //maybe add -G 4096
 
                 cmd = new Command(script, true);
@@ -227,16 +276,27 @@ namespace HypervCsiDriver.Infrastructure
                 //commands.Add(cmd);
 
                 var result = await _power.InvokeAsync(commands).ThrowOnError().ToListAsync(cancellationToken);
+
+                deviceFSType = fsType;
+            } 
+            else if(deviceFSType != fsType)
+            {
+                throw new Exception("fsType ambiguous");
             }
 
-            if (string.IsNullOrEmpty(partInfo?.Mountpoint))
+
+            commands.Clear();
+
+            cmd = new Command($"findmnt -fnr {deviceName} {request.TargetPath}", true);
+            commands.Add(cmd);
+
+            ///tmp/testdrive /dev/sdb1 ext4 rw,noatime,seclabel,discard
+            var mountpoint = await _power.InvokeAsync(commands).ThrowOnError()
+                .Select(n => n.BaseObject).OfType<string>().FirstOrDefaultAsync(cancellationToken);
+
+            if (string.IsNullOrEmpty(mountpoint))
             {
-                if (!string.IsNullOrEmpty(partInfo?.FSType) && partInfo.FSType != fsType)
-                    throw new Exception("fsType ambiguous");
-
                 commands.Clear();
-
-                var devicePath = $"/dev/{deviceName}1";
 
                 var options = new HashSet<string> { "discard", "noatime" };
 
@@ -247,7 +307,7 @@ namespace HypervCsiDriver.Infrastructure
                     options.Add("ro");
 
                 //mount -o "discard,noatime,ro" /dev/sdb1 /drivetest
-                var script = $"mount -o \"{string.Join(",", options)}\" {devicePath} {request.TargetPath}";
+                var script = $"mount -o \"{string.Join(",", options)}\" {deviceName} {request.TargetPath}";
 
                 cmd = new Command(script, true);
                 commands.Add(cmd);
@@ -257,18 +317,8 @@ namespace HypervCsiDriver.Infrastructure
 
                 var result = await _power.InvokeAsync(commands).ThrowOnError()
                     .ToListAsync(cancellationToken);
-            }
-            else
-            {
-                if (partInfo.FSType != fsType)
-                    throw new Exception("fsType ambiguous");
 
-                //fix bind mount will overwrite 
-                //if (partInfo.Mountpoint != request.TargetPath)
-                //    throw new Exception($"already mounted at {partInfo.Mountpoint}");
-
-                //todo mount options check
-                //todo mount readonly check
+                mountpoint = request.TargetPath;
             }
         }
 

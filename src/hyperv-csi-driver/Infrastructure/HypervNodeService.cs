@@ -276,7 +276,7 @@ namespace HypervCsiDriver.Infrastructure
                 //commands.Add(cmd);
                 
                 var results = await _power.InvokeAsync(commands)
-                    .ThrowOnError(error => error.Exception is null || !error.Exception.Message.StartsWith("mke2fs"))
+                    .ThrowOnError(error => !error.Exception.Message.StartsWith("mke2fs"))
                     .ToListAsync(cancellationToken);
 
                 deviceFSType = fsType;

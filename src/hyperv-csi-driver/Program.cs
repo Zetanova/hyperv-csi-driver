@@ -40,6 +40,7 @@ namespace HypervCsiDriver
                                 //todo debug switch to listen on TCP
                                 logger.LogWarning("CSI_ENDPOINT required");
 
+
                                 //opt.ListenLocalhost(5216, o =>
                                 //{
                                 //    o.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http2;
@@ -55,20 +56,18 @@ namespace HypervCsiDriver
                             } 
                             else
                             {
+                                //unlink socket
+                                if (File.Exists(csiEP))
+                                {
+                                    File.Delete(csiEP);
+                                    logger.LogWarning($"socket '{csiEP}' unlinked");
+                                }                          
+
                                 opt.ListenUnixSocket(csiEP, o => 
                                 {
                                     o.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http2;
 
                                     o.UseConnectionLogging("CSI");
-                                    
-                                    //o.Use(next => 
-                                    //{
-                                    //    return async (ctx) => 
-                                    //    {
-                                            
-                                    //        await (next);
-                                    //    };    
-                                    //});
                                 });
                             }
                         })

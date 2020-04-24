@@ -25,7 +25,7 @@ spec:
             name: ssh-tmp-dir
       containers:
         - name: csi-provisioner
-          image: quay.io/k8scsi/csi-provisioner:canary
+          image: quay.io/k8scsi/csi-provisioner:v1.6.0
           args:
             - "--csi-address=$(ADDRESS)"
           # - "--enable-leader-election"
@@ -45,9 +45,9 @@ spec:
               mountPath: /csi
 
         - name: csi-attacher
-          image: quay.io/k8scsi/csi-attacher:canary
+          image: quay.io/k8scsi/csi-attacher:v2.2.0
           args:
-            - "--v=5"
+          # - "--v=5"
             - "--csi-address=$(ADDRESS)"
           # - "--leader-election"
           env:
@@ -69,14 +69,20 @@ spec:
             - name: socket-dir
               mountPath: /csi
 
-        - name: mock-driver
-          image: quay.io/k8scsi/mock-driver:canary
-          imagePullPolicy: "IfNotPresent"
-          args:
-            - "--name=eu.zetanova.csi.hyperv"
+        - name: csi-hyperv
+          image: zetanova/hyperv-csi-driver:1.0.1
+          imagePullPolicy: Always
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "rm -f /csi/hyperv.sock"]
           env:
+            - name: DRIVER__TYPE
+              value: "Controller"
+            - name: DRIVER__USERNAME
+              value: "Administrator"
             - name: CSI_ENDPOINT
-              value: /csi/csi.sock
+              value: /csi/hyperv.sock
           resources:
             limits:
               cpu: 150m
@@ -95,7 +101,30 @@ spec:
             - mountPath: "/root/.ssh/known_hosts"
               subPath: "known_hosts"
               name: ssh-tmp-dir
-              
+
+        - name: csi-proxy
+          image: zetanova/grpc-poxy:1.0.1
+          #imagePullPolicy: Always
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "rm -f /csi/csi.sock"]
+          env:
+            - name: BIND_TO
+              value: "unix:///csi/csi.sock"
+            - name: PROXY_TO
+              value: "unix:///csi/hyperv.sock"
+          resources:
+            limits:
+              cpu: 10m
+              memory: 20Mi
+            requests:
+              cpu: 2m
+              memory: 12Mi
+          volumeMounts:
+            - mountPath: /csi
+              name: socket-dir
+
       volumes:
         - name: socket-dir
           emptyDir: {}

@@ -11,12 +11,13 @@ spec:
     metadata:
       labels:
         app: csi-hyperv-node
+        ver: v118
     spec:
       containers:
         - name: csi-node-driver-registrar
-          image: quay.io/k8scsi/csi-node-driver-registrar:v1.2.0
+          image: quay.io/k8scsi/csi-node-driver-registrar:v1.3.0
           args:
-            - "--v=5"
+          #  - "--v=5"
             - "--csi-address=/csi/csi.sock"
             - "--kubelet-registration-path=/var/lib/kubelet/plugins/eu.zetanova.csi.hyperv/csi.sock"
           lifecycle:
@@ -31,16 +32,28 @@ spec:
             - name: registration-dir
               mountPath: /registration
 
-        - name: mock-driver
-          image: quay.io/k8scsi/mock-driver:canary
-          imagePullPolicy: "IfNotPresent"
+        - name: csi-hyperv
+          image: zetanova/hyperv-csi-driver:1.0.1
+          imagePullPolicy: Always
           securityContext:
-            privileged: true
+            privileged: true          
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "rm -f /sockets/hyperv.sock"]
           args:
             - "--name=eu.zetanova.csi.hyperv"
           env:
+            - name: DRIVER__TYPE
+              value: Node
             - name: CSI_ENDPOINT
-              value: /csi/csi.sock
+              value: /sockets/hyperv.sock
+            #- name: Logging__LogLevel__Default
+            #  value: Debug
+            #- name: Logging__LogLevel__Grpc
+            #  value: Debug
+            - name: Logging__LogLevel__Microsoft
+              value: Information
           volumeMounts:
             - mountPath: /csi
               name: plugin-dir
@@ -48,9 +61,32 @@ spec:
               mountPropagation: Bidirectional
               name: mountpoint-dir
             - mountPath: /dev
+              #mountPropagation: Bidirectional
               name: dev-dir 
             - mountPath: /var/lib/hyperv
               name: hyperv-dir
+            - mountPath: /sockets
+              name: socket-dir
+        
+        - name: csi-proxy
+          image: zetanova/hyperv-csi-driver:1.0.1
+          imagePullPolicy: Always
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "rm -f /csi/csi.sock"]
+          env:
+            - name: BIND_TO
+              value: "unix:///csi/csi.sock"
+            - name: PROXY_TO
+              value: "unix:///sockets/hyperv.sock"
+          volumeMounts:
+            - mountPath: /csi
+              name: plugin-dir
+            - mountPath: /var/lib/hyperv
+              name: hyperv-dir
+            - mountPath: /sockets
+              name: socket-dir
 
       volumes:
         - name: registration-dir
@@ -73,4 +109,5 @@ spec:
           hostPath:
             path: /var/lib/hyperv
             type: Directory
-          
+        - name: socket-dir
+          emptyDir: {}

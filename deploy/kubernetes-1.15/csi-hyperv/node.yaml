@@ -34,7 +34,7 @@ spec:
 
         - name: csi-hyperv
           image: zetanova/hyperv-csi-driver:1.0.2
-          imagePullPolicy: Always
+          #imagePullPolicy: Always
           securityContext:
             privileged: true          
           lifecycle:
@@ -69,8 +69,8 @@ spec:
               name: socket-dir
         
         - name: csi-proxy
-          image: zetanova/hyperv-csi-driver:1.0.1
-          imagePullPolicy: Always
+          image: zetanova/grpc-poxy:1.0.1
+          #imagePullPolicy: Always
           lifecycle:
             preStop:
               exec:

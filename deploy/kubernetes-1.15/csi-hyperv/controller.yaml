@@ -82,6 +82,8 @@ spec:
               value: "Controller"
             - name: DRIVER__USERNAME
               value: "Administrator"
+            - name: DRIVER_DEFAULTSTORAGE
+              value: "myCSV"
             - name: CSI_ENDPOINT
               value: /csi/hyperv.sock
           resources:

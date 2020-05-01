@@ -15,6 +15,8 @@ namespace HypervCsiDriver.Hosting
 
         public string KeyFile { get; set; }
 
+        public string DefaultStorage { get; set; }
+
         //public ControllerSettings Controller { get; set; }
         
         //public NodeSettings Node { get; set; }

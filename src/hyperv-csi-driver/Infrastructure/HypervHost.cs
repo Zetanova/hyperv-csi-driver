@@ -196,6 +196,8 @@ namespace HypervCsiDriver.Infrastructure
 
         readonly string _hostName;
 
+        public string DefaultStorage { get; set; } = string.Empty;
+
         public HypervHost(string hostName, string userName, string keyFile = null)
         {
             _power = new PNetPowerShell(hostName, userName, keyFile);
@@ -214,7 +216,16 @@ namespace HypervCsiDriver.Infrastructure
             var name = request.Name;
             var storage = !string.IsNullOrEmpty(request.Storage) 
                     ? request.Storage 
-                    : await FindFreeStoragesAsync(request.SizeBytes).FirstAsync();
+                    : await FindFreeStoragesAsync(request.SizeBytes)
+                            .FirstOrDefaultAsync(cancellationToken);
+
+            //use default storage
+            if (string.IsNullOrEmpty(storage) && !string.IsNullOrEmpty(DefaultStorage))
+                storage = DefaultStorage;
+            else
+                throw new InvalidOperationException("no storage found or specified");
+
+            //todo check storage free space
 
             //handle windows Path under linux
             storage = storage.ToLower();
@@ -341,7 +352,7 @@ namespace HypervCsiDriver.Infrastructure
             var commands = new List<Command>(5);
 
             cmd = new Command("Get-ChildItem");
-            cmd.Parameters.Add("Path", @"C:\ClusterStorage");
+            cmd.Parameters.Add("Path", HypervDefaults.ClusterStoragePath);
             if (!string.IsNullOrEmpty(filter?.Storage))
                 cmd.Parameters.Add("Filter", $"{filter.Storage}");
             commands.Add(cmd);
@@ -585,7 +596,7 @@ namespace HypervCsiDriver.Infrastructure
             //csv.SharedVolumeInfo { MaintenanceMode=False, FaultState=NoFaults }
             */
 
-            yield return "hv05"; //todo free storage lookup
+            yield break; //todo free storage lookup
         }
     }
 }

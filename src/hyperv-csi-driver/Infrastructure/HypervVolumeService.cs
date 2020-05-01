@@ -53,7 +53,10 @@ namespace HypervCsiDriver.Infrastructure
 
             if (!_hosts.TryGetValue(hostName, out var host))
             {
-                host = new HypervHost(hostName, _options.UserName, _options.KeyFile);
+                host = new HypervHost(hostName, _options.UserName, _options.KeyFile) 
+                { 
+                    DefaultStorage = _options.DefaultStorage
+                };
 
                 ImmutableDictionary<string, HypervHost> current;
                 ImmutableDictionary<string, HypervHost> result;

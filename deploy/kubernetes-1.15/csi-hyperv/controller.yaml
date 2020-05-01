@@ -71,7 +71,7 @@ spec:
               mountPath: /csi
 
         - name: csi-hyperv
-          image: zetanova/hyperv-csi-driver:1.0.2
+          image: zetanova/hyperv-csi-driver:1.0.3
           #imagePullPolicy: Always
           lifecycle:
             preStop:
@@ -82,8 +82,8 @@ spec:
               value: "Controller"
             - name: DRIVER__USERNAME
               value: "Administrator"
-            - name: DRIVER_DEFAULTSTORAGE
-              value: "myCSV"
+            #- name: DRIVER_DEFAULTSTORAGE
+            #  value: "CSI"
             - name: CSI_ENDPOINT
               value: /csi/hyperv.sock
           resources:

@@ -44,7 +44,7 @@ namespace HypervCsiDriver
 
                                 if (!string.IsNullOrEmpty(value))
                                     opt.HostName = value;
-                                if (!string.IsNullOrEmpty(opt.UserName))
+                                if (string.IsNullOrEmpty(opt.UserName))
                                     opt.UserName = "Administrator"; //aka windows root
                             }
                             break;

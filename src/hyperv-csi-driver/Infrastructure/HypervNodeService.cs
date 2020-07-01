@@ -246,7 +246,7 @@ namespace HypervCsiDriver.Infrastructure
 
                 //parted /dev/sdb --script mklabel gpt
                 //parted /dev/sdb --script mkpart primary ext4 0% 100%
-                var script = $"parted /dev/{blockDeviceName} --script mklabel gpt mkpart primary {fsType} 0% 100%";
+                var script = $"parted --align=opt /dev/{blockDeviceName} --script mklabel gpt mkpart primary {fsType} 1MiB 100%";
 
                 cmd = new Command(script, true);
                 commands.Add(cmd);

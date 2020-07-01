@@ -440,22 +440,23 @@ namespace HypervCsiDriver
 
                 var v = await _service.GetVolumeAsync(foundVolume.Path, context.CancellationToken);
 
-                var volume = new Volume
-                {
-                    VolumeId = foundVolume.Name,
-                    CapacityBytes = (long)v.SizeBytes,
-                    //AccessibleTopology
-                    //ContentSource 
-                };
-
-                volume.VolumeContext.Add("Id", v.Id.ToString());
-                volume.VolumeContext.Add("Storage", v.Storage);
-                volume.VolumeContext.Add("Path", v.Path);
-
                 var entry = new ListVolumesResponse.Types.Entry
                 {
-                    Volume = volume
+                    Volume = new Volume
+                    {
+                        VolumeId = foundVolume.Name,
+                        CapacityBytes = (long)v.SizeBytes,                        
+                        //AccessibleTopology
+                        //ContentSource 
+                    }, 
+                    Status = new ListVolumesResponse.Types.VolumeStatus
+                    {
+                    }
                 };
+                entry.Volume.VolumeContext.Add("Id", v.Id.ToString());
+                entry.Volume.VolumeContext.Add("Storage", v.Storage);
+                entry.Volume.VolumeContext.Add("Path", v.Path);
+
                 entry.Status.PublishedNodeIds.Add(volumeFlows.Select(n => n.VMId.ToString()));
 
                 rsp.Entries.Add(entry);

@@ -1,6 +1,5 @@
 ﻿using HypervCsiDriver.Hosting;
 using Microsoft.Extensions.Options;
-using PNet.Automation;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
@@ -35,9 +34,7 @@ namespace HypervCsiDriver.Infrastructure
     {
         readonly HypervCsiDriverOptions _options;
 
-        ImmutableDictionary<string, HypervHost> _hosts =  ImmutableDictionary.Create<string, HypervHost>(StringComparer.OrdinalIgnoreCase);
-
-        string masterHostName;
+        ImmutableDictionary<string, HypervHost> _hosts = ImmutableDictionary.Create<string, HypervHost>(StringComparer.OrdinalIgnoreCase);
 
         public HypervVolumeService(IOptions<HypervCsiDriverOptions> options)
         {
@@ -53,8 +50,8 @@ namespace HypervCsiDriver.Infrastructure
 
             if (!_hosts.TryGetValue(hostName, out var host))
             {
-                host = new HypervHost(hostName, _options.UserName, _options.KeyFile) 
-                { 
+                host = new HypervHost(hostName, _options.UserName, _options.KeyFile)
+                {
                     DefaultStorage = _options.DefaultStorage
                 };
 
@@ -63,7 +60,7 @@ namespace HypervCsiDriver.Infrastructure
                 do
                 {
                     current = _hosts;
-                    result = current.SetItem(hostName, host); 
+                    result = current.SetItem(hostName, host);
 
                 } while (Interlocked.Exchange(ref _hosts, result) != current);
             }
@@ -98,19 +95,19 @@ namespace HypervCsiDriver.Infrastructure
 
         public async IAsyncEnumerable<HypervVirtualMachineInfo> GetVirtualMachinesAsync(HypervVirtualMachineFilter filter)
         {
-            if(filter != null && (filter.Id != Guid.Empty || !string.IsNullOrEmpty(filter.Name)))
+            if (filter != null && (filter.Id != Guid.Empty || !string.IsNullOrEmpty(filter.Name)))
             {
                 var flow = await GetVolumeFlowsAsnyc(new HypervVolumeFlowFilter { VMId = filter.Id, VMName = filter.Name })
                     .FirstOrDefaultAsync();
 
-                if(flow != null)
+                if (flow != null)
                     yield return new HypervVirtualMachineInfo
                     {
                         Id = flow.VMId,
                         Name = flow.VMName,
                         Host = flow.Host
                     };
-            } 
+            }
             else
             {
                 var hostNames = await GetVolumeFlowsAsnyc(null)
@@ -118,7 +115,7 @@ namespace HypervCsiDriver.Infrastructure
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToListAsync();
 
-                foreach(var h in hostNames)
+                foreach (var h in hostNames)
                 {
                     await foreach (var vm in GetHost(h).GetVirtualMachinesAsync(filter))
                         yield return vm;
@@ -134,9 +131,13 @@ namespace HypervCsiDriver.Infrastructure
             return GetHost(filter.Host).GetVirtualMachineVolumesAsync(vmId, filter);
         }
 
-        public Task<HypervVolumeDetail> GetVolumeAsync(string path, CancellationToken cancellationToken = default)
+        public async Task<HypervVolumeDetail> GetVolumeAsync(string path, CancellationToken cancellationToken = default)
         {
-            return GetHost(_options.HostName).GetVolumeAsync(path, cancellationToken);
+            //todo short lifed flow cache
+            var flow = await GetVolumeFlowsAsnyc(new HypervVolumeFlowFilter { VolumePath = path })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            return await GetHost(flow?.Host ?? _options.HostName).GetVolumeAsync(path, cancellationToken);
         }
 
         public IAsyncEnumerable<HypervVolumeFlowInfo> GetVolumeFlowsAsnyc(HypervVolumeFlowFilter filter)

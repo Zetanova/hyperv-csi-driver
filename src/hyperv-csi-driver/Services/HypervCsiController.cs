@@ -158,7 +158,7 @@ namespace HypervCsiDriver
                 if (shared != foundVolume.Shared)
                     throw new RpcException(new Status(StatusCode.AlreadyExists, string.Empty), "volume share mode mismatch");
 
-                volume = await _service.GetVolumeAsync(foundVolume.Path, context.CancellationToken);                
+                volume = await _service.GetVolumeAsync(foundVolume.Path, context.CancellationToken);
             }
             else
             {

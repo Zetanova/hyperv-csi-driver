@@ -33,7 +33,7 @@ spec:
               mountPath: /registration
 
         - name: csi-hyperv
-          image: zetanova/hyperv-csi-driver:1.0.2
+          image: zetanova/hyperv-csi-driver:1.0.8
           #imagePullPolicy: Always
           securityContext:
             privileged: true          

@@ -174,7 +174,7 @@ namespace HypervCsiDriver
 
             if (request.CapacityRange != null)
             {
-                if (request.CapacityRange.RequiredBytes > 0 && (ulong)request.CapacityRange.RequiredBytes < volume.SizeBytes)
+                if (request.CapacityRange.RequiredBytes > 0 && volume.SizeBytes < (ulong)request.CapacityRange.RequiredBytes)
                     throw new RpcException(new Status(StatusCode.AlreadyExists, string.Empty), "volume too small");
 
                 if (request.CapacityRange.LimitBytes > 0 && (ulong)request.CapacityRange.LimitBytes < volume.SizeBytes)

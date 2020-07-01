@@ -431,7 +431,7 @@ namespace HypervCsiDriver
 
             var rsp = new ListVolumesResponse
             {
-                NextToken = request.MaxEntries > 0 ? nextIndex.ToString() : null
+                NextToken = request.MaxEntries > 0 ? nextIndex.ToString() : string.Empty
             };
 
             foreach (var foundVolume in foundVolumes)

@@ -15,6 +15,8 @@ namespace HypervCsiDriver.Infrastructure
 
         Task<HypervVolumeDetail> GetVolumeAsync(string path, CancellationToken cancellationToken = default);
 
+        Task<HypervVolumeDetail> GetVolumeAsync(string path, string hostName, CancellationToken cancellationToken = default);
+
         Task<HypervVolumeDetail> CreateVolumeAsync(HypervCreateVolumeRequest request, CancellationToken cancellationToken = default);
 
         Task DeleteVolumeAsync(HypervDeleteVolumeRequest request, CancellationToken cancellationToken = default);
@@ -135,9 +137,14 @@ namespace HypervCsiDriver.Infrastructure
         {
             //todo short lifed flow cache
             var flow = await GetVolumeFlowsAsnyc(new HypervVolumeFlowFilter { VolumePath = path })
-                .FirstOrDefaultAsync(cancellationToken);
+                    .FirstOrDefaultAsync(cancellationToken);
 
             return await GetHost(flow?.Host ?? _options.HostName).GetVolumeAsync(path, cancellationToken);
+        }
+
+        public async Task<HypervVolumeDetail> GetVolumeAsync(string path, string hostName, CancellationToken cancellationToken = default)
+        {
+            return await GetHost(hostName ?? _options.HostName).GetVolumeAsync(path, cancellationToken);
         }
 
         public IAsyncEnumerable<HypervVolumeFlowInfo> GetVolumeFlowsAsnyc(HypervVolumeFlowFilter filter)

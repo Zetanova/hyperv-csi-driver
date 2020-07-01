@@ -10,6 +10,7 @@ using System.Management.Automation.Runspaces;
 using System.Reactive.Linq;
 using System.Threading.Tasks;
 using Xunit;
+using System.Threading;
 
 namespace HypervCsiDriver.UnitTests
 {
@@ -80,6 +81,35 @@ namespace HypervCsiDriver.UnitTests
             var vm = Assert.Single(vms);
 
             Assert.Equal(vmName, vm.Name, true);
+        }
+
+        [Theory]
+        [InlineData("sv1506")]
+        public async Task query_volume_details(string hostName, CancellationToken cancellationToken = default)
+        {
+            var host = await Fixture.GetHypervVolumeSerivceAsync(hostName);
+
+            var volumeSource = host.GetVolumesAsync(null).Take(10);
+
+            var foundVolumes = await volumeSource
+                .ToListAsync(cancellationToken);
+
+            Assert.NotEmpty(foundVolumes);
+
+            var flows = await host.GetVolumeFlowsAsnyc(null)
+                .ToListAsync(cancellationToken);
+
+            //Assert.NotEmpty(flows);
+
+            foreach (var foundVolume in foundVolumes)
+            {
+                var volumeFlows = flows.Where(n => StringComparer.OrdinalIgnoreCase.Equals(foundVolume.Path, n.Path)).ToList();
+
+                var v = await host.GetVolumeAsync(foundVolume.Path, volumeFlows.FirstOrDefault()?.Host, cancellationToken);
+
+                Assert.True(v.SizeBytes > 0);
+                Assert.Equal(foundVolume.Path, v.Path, true);
+            }
         }
 
         [Theory]

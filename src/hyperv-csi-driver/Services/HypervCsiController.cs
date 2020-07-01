@@ -312,7 +312,7 @@ namespace HypervCsiDriver
             }
             else
             {
-                var volume = await _service.GetVolumeAsync(foundVolume.Path, context.CancellationToken);
+                var volume = await _service.GetVolumeAsync(foundVolume.Path, null, context.CancellationToken);
 
                 if (shared != volume.Shared)
                     throw new RpcException(new Status(StatusCode.InvalidArgument, string.Empty),
@@ -433,12 +433,12 @@ namespace HypervCsiDriver
             {
                 NextToken = request.MaxEntries > 0 ? nextIndex.ToString() : string.Empty
             };
-
+            
             foreach (var foundVolume in foundVolumes)
             {
                 var volumeFlows = flows.Where(n => StringComparer.OrdinalIgnoreCase.Equals(foundVolume.Path, n.Path)).ToList();
-
-                var v = await _service.GetVolumeAsync(foundVolume.Path, context.CancellationToken);
+                var hostName = volumeFlows.FirstOrDefault()?.Host;
+                var v = await _service.GetVolumeAsync(foundVolume.Path, hostName, context.CancellationToken);
 
                 var entry = new ListVolumesResponse.Types.Entry
                 {

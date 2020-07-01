@@ -213,10 +213,16 @@ namespace HypervCsiDriver.Infrastructure
             if (request.Shared)
                 throw new NotImplementedException("shared disk not implemented");
 
+            //the smallest valid size for a virtual hard disk is 3MB.
+            var sizeBytes = Math.Max(request.SizeBytes, 3*1024*1024);
+            
+            //align size to 4096
+            sizeBytes = sizeBytes % 4096 > 0 ? sizeBytes + 4096 - (sizeBytes % 4096) : sizeBytes;
+
             var name = request.Name;
             var storage = !string.IsNullOrEmpty(request.Storage) 
                     ? request.Storage 
-                    : await FindFreeStoragesAsync(request.SizeBytes)
+                    : await FindFreeStoragesAsync(sizeBytes)
                             .FirstOrDefaultAsync(cancellationToken);
 
             //use default storage
@@ -237,7 +243,7 @@ namespace HypervCsiDriver.Infrastructure
 
             cmd = new Command("New-VHD");
             cmd.Parameters.Add("Path", path);
-            cmd.Parameters.Add("SizeBytes", request.SizeBytes);
+            cmd.Parameters.Add("SizeBytes", sizeBytes);
             cmd.Parameters.Add("Dynamic", request.Dynamic);
             cmd.Parameters.Add("BlockSizeBytes", request.BlockSizeBytes);
             cmd.Parameters.Add("LogicalSectorSizeBytes", 4096);

@@ -158,16 +158,7 @@ namespace HypervCsiDriver
                 if (shared != foundVolume.Shared)
                     throw new RpcException(new Status(StatusCode.AlreadyExists, string.Empty), "volume share mode mismatch");
 
-                volume = await _service.GetVolumeAsync(foundVolume.Path, context.CancellationToken);
-
-                if (request.CapacityRange != null)
-                {
-                    if (request.CapacityRange.RequiredBytes > 0 && (ulong)request.CapacityRange.RequiredBytes < volume.SizeBytes)
-                        throw new RpcException(new Status(StatusCode.AlreadyExists, string.Empty), "volume too small");
-
-                    if (request.CapacityRange.LimitBytes > 0 && (ulong)request.CapacityRange.LimitBytes < volume.SizeBytes)
-                        throw new RpcException(new Status(StatusCode.AlreadyExists, string.Empty), "volume too large");
-                }
+                volume = await _service.GetVolumeAsync(foundVolume.Path, context.CancellationToken);                
             }
             else
             {
@@ -179,6 +170,15 @@ namespace HypervCsiDriver
                     Shared = shared
                 },
                 context.CancellationToken);
+            }
+
+            if (request.CapacityRange != null)
+            {
+                if (request.CapacityRange.RequiredBytes > 0 && (ulong)request.CapacityRange.RequiredBytes < volume.SizeBytes)
+                    throw new RpcException(new Status(StatusCode.AlreadyExists, string.Empty), "volume too small");
+
+                if (request.CapacityRange.LimitBytes > 0 && (ulong)request.CapacityRange.LimitBytes < volume.SizeBytes)
+                    throw new RpcException(new Status(StatusCode.AlreadyExists, string.Empty), "volume too large");
             }
 
             var rsp = new CreateVolumeResponse

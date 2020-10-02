@@ -4,7 +4,10 @@ using HypervCsiDriver.Infrastructure;
 using HypervCsiDriver.Utils;
 using Microsoft.Extensions.Logging;
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Management.Automation;
+using System.Management.Automation.Language;
 using System.Threading.Tasks;
 
 namespace HypervCsiDriver
@@ -433,22 +436,50 @@ namespace HypervCsiDriver
             {
                 NextToken = request.MaxEntries > 0 ? nextIndex.ToString() : string.Empty
             };
-            
+
             foreach (var foundVolume in foundVolumes)
             {
                 var volumeFlows = flows.Where(n => StringComparer.OrdinalIgnoreCase.Equals(foundVolume.Path, n.Path)).ToList();
-                var hostName = volumeFlows.FirstOrDefault()?.Host;
-                var v = await _service.GetVolumeAsync(foundVolume.Path, hostName, context.CancellationToken);
+
+
+                var errors = new List<Exception>();
+                HypervVolumeDetail v = null;
+
+                foreach (var hostName in volumeFlows.Select(n => n.Host).DefaultIfEmpty(null))
+                {
+                    //maybe stale record after remount to other node
+
+                    try
+                    {
+                        v = await _service.GetVolumeAsync(foundVolume.Path, hostName, context.CancellationToken);
+                        continue;
+                    }
+                    catch (Exception ex)
+                    {
+                        errors.Add(new Exception($"Getting volume details of '{foundVolume.Name}' at host '{hostName ?? "default"}' failed.", ex));
+                    }
+                }
+
+                if (v is null)
+                {
+                    switch(errors.Count)
+                    {
+                        case 1:
+                            throw errors[0];
+                        default:
+                            throw new AggregateException($"Getting volume details of '{foundVolume.Name}' failed.", errors);
+                    }                        
+                }
 
                 var entry = new ListVolumesResponse.Types.Entry
                 {
                     Volume = new Volume
                     {
                         VolumeId = foundVolume.Name,
-                        CapacityBytes = (long)v.SizeBytes,                        
+                        CapacityBytes = (long)v.SizeBytes,
                         //AccessibleTopology
                         //ContentSource 
-                    }, 
+                    },
                     Status = new ListVolumesResponse.Types.VolumeStatus
                     {
                     }

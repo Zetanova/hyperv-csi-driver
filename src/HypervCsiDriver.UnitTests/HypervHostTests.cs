@@ -59,9 +59,9 @@ namespace HypervCsiDriver.UnitTests
         }
 
         [Theory]
-        [InlineData("sv1506", "hv05", "test-01")]
-        [InlineData("sv1506", "", "test-01")]
-        [InlineData("sv1506", "hv05", "")]
+        [InlineData("sv1501", "hv05", "test-01")]
+        [InlineData("sv1503", "", "test-01")]
+        [InlineData("sv1505", "hv05", "")]
         public async Task query_volumes_filtered(string hostName, string storageName, string volumeName)
         {
             var host = await Fixture.GetHypervHostAsync(hostName);

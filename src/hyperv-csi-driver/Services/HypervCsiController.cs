@@ -462,13 +462,11 @@ namespace HypervCsiDriver
 
                 if (v is null)
                 {
-                    switch(errors.Count)
+                    throw errors.Count switch
                     {
-                        case 1:
-                            throw errors[0];
-                        default:
-                            throw new AggregateException($"Getting volume details of '{foundVolume.Name}' failed.", errors);
-                    }                        
+                        1 => errors[0],
+                        _ => new AggregateException($"Getting volume details of '{foundVolume.Name}' failed.", errors),
+                    };
                 }
 
                 var entry = new ListVolumesResponse.Types.Entry

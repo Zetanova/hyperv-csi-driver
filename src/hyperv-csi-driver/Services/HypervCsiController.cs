@@ -386,6 +386,8 @@ namespace HypervCsiDriver
                 throw new RpcException(new Status(StatusCode.NotFound, string.Empty),
                     "node not found");
 
+            //todo maybe vm is deleted, spec: SHOULD return OK
+
             await _service.DetachVolumeAsync(new HypervDetachVolumeRequest
             {
                 VMId = vm.Id,

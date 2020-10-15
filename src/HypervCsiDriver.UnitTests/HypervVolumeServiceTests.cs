@@ -186,7 +186,8 @@ namespace HypervCsiDriver.UnitTests
         {
             var service = await Fixture.GetHypervVolumeSerivceAsync(hostName);
 
-            var vm = await service.GetVirtualMachinesAsync(new HypervVirtualMachineFilter { Name = vmName }).FirstAsync();
+            var vm = await service.GetVirtualMachinesAsync(new HypervVirtualMachineFilter { Name = vmName })
+                .FirstAsync();
 
             Assert.Equal(vmName, vm.Name, true);
 

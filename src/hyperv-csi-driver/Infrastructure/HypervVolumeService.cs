@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -27,7 +28,7 @@ namespace HypervCsiDriver.Infrastructure
 
         IAsyncEnumerable<HypervVirtualMachineVolumeInfo> GetVirtualMachineVolumesAsync(Guid vmId, HypervVirtualMachineVolumeFilter filter);
 
-        IAsyncEnumerable<HypervVirtualMachineInfo> GetVirtualMachinesAsync(HypervVirtualMachineFilter filter);
+        IAsyncEnumerable<HypervVirtualMachineInfo> GetVirtualMachinesAsync(HypervVirtualMachineFilter filter, CancellationToken cancellationToken = default);
 
         IAsyncEnumerable<HypervVolumeFlowInfo> GetVolumeFlowsAsnyc(HypervVolumeFlowFilter filter);
     }
@@ -95,31 +96,35 @@ namespace HypervCsiDriver.Infrastructure
             return GetHost(request.Host).DetachVolumeAsync(request, cancellationToken);
         }
 
-        public async IAsyncEnumerable<HypervVirtualMachineInfo> GetVirtualMachinesAsync(HypervVirtualMachineFilter filter)
+        public async IAsyncEnumerable<HypervVirtualMachineInfo> GetVirtualMachinesAsync(HypervVirtualMachineFilter filter, [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
+            HypervVolumeFlowInfo flow = null;
             if (filter != null && (filter.Id != Guid.Empty || !string.IsNullOrEmpty(filter.Name)))
             {
-                var flow = await GetVolumeFlowsAsnyc(new HypervVolumeFlowFilter { VMId = filter.Id, VMName = filter.Name })
-                    .FirstOrDefaultAsync();
-
-                if (flow != null)
-                    yield return new HypervVirtualMachineInfo
-                    {
-                        Id = flow.VMId,
-                        Name = flow.VMName,
-                        Host = flow.Host
-                    };
+                flow = await GetVolumeFlowsAsnyc(new HypervVolumeFlowFilter { VMId = filter.Id, VMName = filter.Name })
+                    .FirstOrDefaultAsync(cancellationToken);   
             }
+
+            if (flow != null)
+            {
+                yield return new HypervVirtualMachineInfo
+                {
+                    Id = flow.VMId,
+                    Name = flow.VMName,
+                    Host = flow.Host
+                };
+            }   
             else
             {
+                //todo improve hostName set to know of deleted vm's
+
                 var hostNames = await GetVolumeFlowsAsnyc(null)
-                    .Select(n => n.Host)
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToListAsync();
+                    .Select(n => n.Host).Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToListAsync(cancellationToken);
 
                 foreach (var h in hostNames)
                 {
-                    await foreach (var vm in GetHost(h).GetVirtualMachinesAsync(filter))
+                    await foreach (var vm in GetHost(h).GetVirtualMachinesAsync(filter).WithCancellation(cancellationToken))
                         yield return vm;
                 }
             }

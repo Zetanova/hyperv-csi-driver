@@ -19,7 +19,7 @@ namespace PNet.Automation
 
     public sealed class PNetPowerShell : IPNetPowerShell, IDisposable
     {
-        PNetRunspacePool _pool;
+        readonly PNetRunspacePool _pool;
 
         public PNetPowerShell()
         {
@@ -59,7 +59,7 @@ namespace PNet.Automation
             return Observable.Using(GetRunspace, c => func(c.Runspace))
                 .SubscribeOn(DefaultScheduler.Instance); //todo work with context
         }
-        
+
         bool disposed;
         public void Dispose()
         {
@@ -101,6 +101,8 @@ namespace PNet.Automation
                     current = runspaces;
                     result = current.RemoveAll(n => n.RunspaceAvailability == RunspaceAvailability.None);
 
+                    //result = current.RemoveAll(n => n.RunspaceStateInfo.State == RunspaceState.Broken);
+
                     rs = result.FirstOrDefault(n => n.RunspaceAvailability == RunspaceAvailability.Available);
                     if (rs != null)
                         result = result.Remove(rs);
@@ -113,7 +115,7 @@ namespace PNet.Automation
 
             rs.ResetRunspaceState();
 
-            return CreateRunspace();
+            return rs;
         }
 
         public bool Return(Runspace runspace)
@@ -160,7 +162,7 @@ namespace PNet.Automation
         {
             if (disposed)
                 return;
-            
+
             if (disposing)
             {
                 var current = runspaces;
@@ -169,7 +171,7 @@ namespace PNet.Automation
                     rs.Dispose();
             }
 
-            disposed = true;            
+            disposed = true;
         }
 
         public void Dispose()
@@ -179,7 +181,7 @@ namespace PNet.Automation
         }
     }
 
-    class PNetRunspaceContainer : IDisposable
+    sealed class PNetRunspaceContainer : IDisposable
     {
         public PNetRunspacePool Pool { get; }
 

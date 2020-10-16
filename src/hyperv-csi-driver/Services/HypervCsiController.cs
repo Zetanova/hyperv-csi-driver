@@ -443,11 +443,14 @@ namespace HypervCsiDriver
             {
                 var volumeFlows = flows.Where(n => StringComparer.OrdinalIgnoreCase.Equals(foundVolume.Path, n.Path)).ToList();
 
+                var hostNames = volumeFlows.Select(n => n.Host)
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .DefaultIfEmpty(null);
 
                 var errors = new List<Exception>();
                 HypervVolumeDetail v = null;
 
-                foreach (var hostName in volumeFlows.Select(n => n.Host).DefaultIfEmpty(null))
+                foreach (var hostName in hostNames)
                 {
                     //maybe stale record after remount to other node
 

@@ -180,7 +180,7 @@ namespace HypervCsiDriver.UnitTests
         }
 
         [Theory]
-        [InlineData("sv1506", "lnx1521", "test-01")]
+        [InlineData("sv1501", "lnx1521", "test-01")]
         public async Task attach_detach_volume(string hostName, string vmName, string volumeName)
         {
             var host = await Fixture.GetHypervHostAsync(hostName);
@@ -217,7 +217,7 @@ namespace HypervCsiDriver.UnitTests
         }
 
         [Theory]
-        [InlineData("sv1506", "lnx1521", @"C:\ClusterStorage\hv05\disks\lnx1521.vhdx")]
+        [InlineData("sv1501", "lnx1521", @"C:\ClusterStorage\hv05\disks\lnx1521.vhdx")]
         public async Task query_volume_flow_single(string hostName, string vmName, string volumePath)
         {
             var host = await Fixture.GetHypervHostAsync(hostName);

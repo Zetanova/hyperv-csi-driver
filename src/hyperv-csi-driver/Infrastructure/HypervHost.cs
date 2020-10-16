@@ -190,7 +190,7 @@ namespace HypervCsiDriver.Infrastructure
         public string VolumePath { get; set; }
     }
 
-    public sealed class HypervHost : IHypervHost
+    public sealed class HypervHost : IHypervHost, IDisposable
     {
         readonly PNetPowerShell _power;
 
@@ -603,6 +603,11 @@ namespace HypervCsiDriver.Infrastructure
             */
 
             yield break; //todo free storage lookup
+        }
+
+        public void Dispose()
+        {
+            _power.Dispose();
         }
     }
 }

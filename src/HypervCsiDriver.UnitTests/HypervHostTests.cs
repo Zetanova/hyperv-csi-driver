@@ -42,7 +42,7 @@ namespace HypervCsiDriver.UnitTests
 
         public void Dispose()
         {
-            //power?.Dispose()
+            (_host as IDisposable)?.Dispose();
         }
     }
 

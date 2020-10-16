@@ -78,6 +78,8 @@ namespace PNet.Automation
 
         ImmutableList<Runspace> runspaces = ImmutableList<Runspace>.Empty;
 
+        public int MaxSize { get; set; } = 3;
+
         public PNetRunspacePool()
         {
             _connectionInfo = null;
@@ -99,11 +101,35 @@ namespace PNet.Automation
                 do
                 {
                     current = runspaces;
-                    result = current.RemoveAll(n => n.RunspaceAvailability == RunspaceAvailability.None);
 
+                    //result = current.RemoveAll(n => n.RunspaceAvailability == RunspaceAvailability.None);
                     //result = current.RemoveAll(n => n.RunspaceStateInfo.State == RunspaceState.Broken);
 
-                    rs = result.FirstOrDefault(n => n.RunspaceAvailability == RunspaceAvailability.Available);
+                    //cleanup
+                    var list = ImmutableList.CreateBuilder<Runspace>();
+                    foreach (var r in current)
+                    {
+                        switch(r.RunspaceStateInfo.State)
+                        {
+                            case RunspaceState.Opening:
+                            case RunspaceState.Opened:
+                                list.Add(r);
+                                break;
+                            //case RunspaceState.Closed: 
+                                //maybe reopen
+                                //break;
+                            default:
+                                r.Dispose();
+                                break;
+                        }
+                    }
+
+                    result = list.ToImmutable();
+
+                    //todo check meaning of RunspaceAvailability.AvailableForNestedCommand
+                    rs = result.FirstOrDefault(n => n.RunspaceAvailability == RunspaceAvailability.Available)
+                        ?? result.FirstOrDefault(n => n.RunspaceAvailability == RunspaceAvailability.AvailableForNestedCommand);
+
                     if (rs != null)
                         result = result.Remove(rs);
 
@@ -111,9 +137,9 @@ namespace PNet.Automation
             }
 
             if (rs is null)
-                return CreateRunspace();
-
-            rs.ResetRunspaceState();
+                rs = CreateRunspace();
+            else
+                rs.ResetRunspaceState(); //reuse
 
             return rs;
         }
@@ -122,20 +148,26 @@ namespace PNet.Automation
         {
             if (disposed) return false;
 
-            if (runspace.RunspaceStateInfo.State != RunspaceState.Opened)
-                return false;
-
+            switch(runspace.RunspaceStateInfo.State)
             {
-                ImmutableList<Runspace> current;
-                ImmutableList<Runspace> result;
-                do
-                {
-                    current = runspaces;
-                    result = current.Add(runspace);
-
-                } while (Interlocked.Exchange(ref runspaces, result) != current);
+                case RunspaceState.Opening:
+                case RunspaceState.Opened:
+                    break;
+                default:
+                    return false;
             }
+                                    
+            ImmutableList<Runspace> current;
+            ImmutableList<Runspace> result;
+            do
+            {
+                current = runspaces;
+                if (current.Count >= MaxSize)
+                    return false;
 
+                result = current.Add(runspace);
+            } while (Interlocked.Exchange(ref runspaces, result) != current);
+            
             return true;
         }
 
@@ -145,7 +177,7 @@ namespace PNet.Automation
                 ? RunspaceFactory.CreateRunspace(_connectionInfo)
                 : RunspaceFactory.CreateRunspace();
 
-            runspace.Open();
+            runspace.Open(); //todo use OpenAsync but how to wait on Opened
 
             //Debug.WriteLine("runspace opened");
 

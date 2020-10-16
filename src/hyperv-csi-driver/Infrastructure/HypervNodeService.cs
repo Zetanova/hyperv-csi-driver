@@ -66,7 +66,7 @@ namespace HypervCsiDriver.Infrastructure
         public string TargetPath { get; set; }
     }
 
-    public sealed class LinuxNodeService : IHypervNodeService
+    public sealed class LinuxNodeService : IHypervNodeService, IDisposable
     {
         readonly HypervCsiDriverOptions _options;
 
@@ -383,6 +383,11 @@ namespace HypervCsiDriver.Infrastructure
             commands.Add(cmd);
 
             var result = await _power.InvokeAsync(commands).ThrowOnError().FirstOrDefaultAsync(cancellationToken);
+        }
+
+        public void Dispose()
+        {
+            _power.Dispose();
         }
     }
 }

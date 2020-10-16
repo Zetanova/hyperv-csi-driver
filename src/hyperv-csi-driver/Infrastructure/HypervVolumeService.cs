@@ -33,7 +33,7 @@ namespace HypervCsiDriver.Infrastructure
         IAsyncEnumerable<HypervVolumeFlowInfo> GetVolumeFlowsAsnyc(HypervVolumeFlowFilter filter);
     }
 
-    public sealed class HypervVolumeService : IHypervVolumeService
+    public sealed class HypervVolumeService : IHypervVolumeService, IDisposable
     {
         readonly HypervCsiDriverOptions _options;
 
@@ -160,6 +160,15 @@ namespace HypervCsiDriver.Infrastructure
         public IAsyncEnumerable<HypervVolumeInfo> GetVolumesAsync(HypervVolumeFilter filter)
         {
             return GetHost(_options.HostName).GetVolumesAsync(filter);
+        }
+
+        public void Dispose()
+        {
+            var hosts = _hosts;
+            _hosts = ImmutableDictionary<string, HypervHost>.Empty;
+
+            foreach (var host in hosts.Values)
+                host.Dispose();
         }
     }
 }

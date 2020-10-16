@@ -49,7 +49,7 @@ namespace HypervCsiDriver.UnitTests
 
         public void Dispose()
         {
-            //power?.Dispose()
+            (_service as IDisposable)?.Dispose();
         }
     }
 

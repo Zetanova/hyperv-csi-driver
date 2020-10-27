@@ -1,0 +1,134 @@
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: csi-hyperv-node
+  namespace: csi-hyperv
+spec:
+  selector:
+    matchLabels:
+      app: csi-hyperv-node
+  template:
+    metadata:
+      labels:
+        app: csi-hyperv-node
+        ver: v119
+    spec:
+      containers:
+        - name: csi-node-driver-registrar
+          image: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.0.1
+          args:
+          #  - "--v=5"
+            - "--csi-address=/csi/csi.sock"
+            - "--kubelet-registration-path=/var/lib/kubelet/plugins/eu.zetanova.csi.hyperv/csi.sock"
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "rm -rf /registration/eu.zetanova.csi.hyperv /registration/eu.zetanova.csi.hyperv-reg.sock"]
+          securityContext:
+            privileged: true
+          resources:
+            limits:
+              cpu: 10m
+              memory: 20Mi
+            requests:
+              cpu: 2m
+              memory: 12Mi          
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+            - name: registration-dir
+              mountPath: /registration
+
+        - name: csi-hyperv
+          image: zetanova/hyperv-csi-driver:1.0.11
+          #imagePullPolicy: Always
+          securityContext:
+            privileged: true          
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "rm -f /sockets/hyperv.sock"]
+          args:
+            - "--name=eu.zetanova.csi.hyperv"
+          env:
+            - name: DRIVER__TYPE
+              value: Node
+            - name: CSI_ENDPOINT
+              value: /sockets/hyperv.sock
+            #- name: Logging__LogLevel__Default
+            #  value: Debug
+            #- name: Logging__LogLevel__Grpc
+            #  value: Debug
+            - name: Logging__LogLevel__Microsoft
+              value: Information
+          resources:
+            limits:
+              cpu: 150m
+              memory: 320Mi
+            requests:
+              cpu: 5m
+              memory: 128Mi
+          volumeMounts:
+            - mountPath: /csi
+              name: plugin-dir
+            - mountPath: /var/lib/kubelet/pods
+              mountPropagation: Bidirectional
+              name: mountpoint-dir
+            - mountPath: /dev
+              #mountPropagation: Bidirectional
+              name: dev-dir 
+            - mountPath: /var/lib/hyperv
+              name: hyperv-dir
+            - mountPath: /sockets
+              name: socket-dir
+        
+        - name: csi-proxy
+          image: zetanova/grpc-poxy:1.0.1
+          #imagePullPolicy: Always
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "rm -f /csi/csi.sock"]
+          env:
+            - name: BIND_TO
+              value: "unix:///csi/csi.sock"
+            - name: PROXY_TO
+              value: "unix:///sockets/hyperv.sock"
+          resources:
+            limits:
+              cpu: 10m
+              memory: 20Mi
+            requests:
+              cpu: 2m
+              memory: 12Mi
+          volumeMounts:
+            - mountPath: /csi
+              name: plugin-dir
+            - mountPath: /var/lib/hyperv
+              name: hyperv-dir
+            - mountPath: /sockets
+              name: socket-dir
+
+      volumes:
+        - name: registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry/
+            type: Directory
+        - name: plugin-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/eu.zetanova.csi.hyperv/
+            type: DirectoryOrCreate
+        - name: mountpoint-dir
+          hostPath:
+            path: /var/lib/kubelet/pods
+            type: DirectoryOrCreate
+        - name: dev-dir
+          hostPath:
+            path: /dev
+            type: Directory
+        - name: hyperv-dir
+          hostPath:
+            path: /var/lib/hyperv
+            type: Directory
+        - name: socket-dir
+          emptyDir: {}

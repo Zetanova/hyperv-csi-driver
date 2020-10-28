@@ -191,7 +191,7 @@ namespace HypervCsiDriver.Infrastructure
             var deviceLabel = string.Empty;
             var deviceUUID = string.Empty;
             var deviceFSType = string.Empty;
-            
+
             cmd = new Command($"blkid -o export {deviceName}", true);
             commands.Add(cmd);
 
@@ -239,6 +239,7 @@ namespace HypervCsiDriver.Infrastructure
             //todo select multiple partitions
 
             var fsType = !string.IsNullOrEmpty(request.FSType) ? request.FSType : "ext4";
+            var setPermissions = false;
 
             if (string.IsNullOrEmpty(deviceUUID))
             {
@@ -280,13 +281,12 @@ namespace HypervCsiDriver.Infrastructure
                     .ToListAsync(cancellationToken);
 
                 deviceFSType = fsType;
+                setPermissions = true;
             } 
-            else if(deviceFSType != fsType)
-            {
+            
+            if(deviceFSType != fsType)
                 throw new Exception("fsType ambiguous");
-            }
-
-
+            
             commands.Clear();
 
             cmd = new Command($"findmnt -fnr {deviceName} {request.TargetPath}", true);
@@ -332,6 +332,19 @@ namespace HypervCsiDriver.Infrastructure
                     .ToListAsync(cancellationToken);
 
                 mountpoint = request.TargetPath;
+            }
+
+            if(setPermissions)
+            {
+                commands.Clear();
+
+                //chmod -R 770 /tmp/mountpoint
+                var script = $"chmod -R 770 {mountpoint}";
+
+                cmd = new Command(script, true);
+                commands.Add(cmd);
+
+                var result = await _power.InvokeAsync(commands).ThrowOnError().ToListAsync(cancellationToken);
             }
         }
 

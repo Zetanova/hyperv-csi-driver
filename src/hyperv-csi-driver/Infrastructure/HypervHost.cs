@@ -226,11 +226,11 @@ namespace HypervCsiDriver.Infrastructure
                             .FirstOrDefaultAsync(cancellationToken);
 
             //use default storage
-            if (string.IsNullOrEmpty(storage) && !string.IsNullOrEmpty(DefaultStorage))
-                storage = DefaultStorage;
-            else
-                throw new InvalidOperationException("no storage found or specified");
-
+            if (string.IsNullOrEmpty(storage))
+                storage = !string.IsNullOrEmpty(DefaultStorage) 
+                    ? DefaultStorage
+                    : throw new InvalidOperationException("no storage found or specified");
+            
             //todo check storage free space
 
             //handle windows Path under linux

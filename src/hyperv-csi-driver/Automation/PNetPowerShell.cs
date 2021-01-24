@@ -109,15 +109,15 @@ namespace PNet.Automation
                     var list = ImmutableList.CreateBuilder<Runspace>();
                     foreach (var r in current)
                     {
-                        switch(r.RunspaceStateInfo.State)
+                        switch (r.RunspaceStateInfo.State)
                         {
                             case RunspaceState.Opening:
                             case RunspaceState.Opened:
                                 list.Add(r);
                                 break;
                             //case RunspaceState.Closed: 
-                                //maybe reopen
-                                //break;
+                            //maybe reopen
+                            //break;
                             default:
                                 r.Dispose();
                                 break;
@@ -133,7 +133,8 @@ namespace PNet.Automation
                     if (rs != null)
                         result = result.Remove(rs);
 
-                } while (Interlocked.Exchange(ref runspaces, result) != current);
+                }
+                while (Interlocked.Exchange(ref runspaces, result) != current);
             }
 
             if (rs is null)
@@ -148,7 +149,7 @@ namespace PNet.Automation
         {
             if (disposed) return false;
 
-            switch(runspace.RunspaceStateInfo.State)
+            switch (runspace.RunspaceStateInfo.State)
             {
                 case RunspaceState.Opening:
                 case RunspaceState.Opened:
@@ -156,18 +157,23 @@ namespace PNet.Automation
                 default:
                     return false;
             }
-                                    
+
             ImmutableList<Runspace> current;
             ImmutableList<Runspace> result;
             do
             {
                 current = runspaces;
+
+                if (current.Contains(runspace))
+                    break;
+
                 if (current.Count >= MaxSize)
                     return false;
 
                 result = current.Add(runspace);
-            } while (Interlocked.Exchange(ref runspaces, result) != current);
-            
+            }
+            while (Interlocked.Exchange(ref runspaces, result) != current);
+
             return true;
         }
 

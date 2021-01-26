@@ -59,9 +59,10 @@ namespace HypervCsiDriver.UnitTests
         }
 
         [Theory]
-        [InlineData("sv1501", "hv05", "test-01")]
-        [InlineData("sv1503", "", "test-01")]
-        [InlineData("sv1505", "hv05", "")]
+        //[InlineData("sv1501", "hv05", "test-01")]
+        //[InlineData("sv1503", "", "test-01")]
+        //[InlineData("sv1505", "hv05", "")]
+        [InlineData("sv1501", "hv05", "pvc-0219c36f-b7d9-45e3-a18a-6275a22ebd0e")]
         public async Task query_volumes_filtered(string hostName, string storageName, string volumeName)
         {
             var host = await Fixture.GetHypervHostAsync(hostName);
@@ -217,7 +218,8 @@ namespace HypervCsiDriver.UnitTests
         }
 
         [Theory]
-        [InlineData("sv1501", "lnx1521", @"C:\ClusterStorage\hv05\disks\lnx1521.vhdx")]
+        //[InlineData("sv1501", "lnx1521", @"C:\ClusterStorage\hv05\disks\lnx1521.vhdx")]
+        [InlineData("sv1501", "lnx1512", @"C:\ClusterStorage\hv05\Volumes\pvc-0219c36f-b7d9-45e3-a18a-6275a22ebd0e.vhdx")]
         public async Task query_volume_flow_single(string hostName, string vmName, string volumePath)
         {
             var host = await Fixture.GetHypervHostAsync(hostName);
@@ -227,9 +229,9 @@ namespace HypervCsiDriver.UnitTests
                 VolumePath = volumePath
             };
 
-            var flows = await host.GetVolumeFlowsAsnyc(filter).ToListAsync();
+            var flow = await host.GetVolumeFlowsAsnyc(filter).FirstOrDefaultAsync();
 
-            var flow = Assert.Single(flows);
+            //var flow = Assert.Single(flows);
 
             Assert.Equal(volumePath, flow.Path, true);
             Assert.Equal(vmName, flow.VMName, true);

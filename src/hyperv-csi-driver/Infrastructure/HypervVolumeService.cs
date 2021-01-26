@@ -102,7 +102,7 @@ namespace HypervCsiDriver.Infrastructure
             if (filter != null && (filter.Id != Guid.Empty || !string.IsNullOrEmpty(filter.Name)))
             {
                 flow = await GetVolumeFlowsAsnyc(new HypervVolumeFlowFilter { VMId = filter.Id, VMName = filter.Name })
-                    .FirstOrDefaultAsync(cancellationToken);   
+                    .FirstOrDefaultAsync(cancellationToken);
             }
 
             if (flow != null)
@@ -113,7 +113,7 @@ namespace HypervCsiDriver.Infrastructure
                     Name = flow.VMName,
                     Host = flow.Host
                 };
-            }   
+            }
             else
             {
                 //todo improve hostName set to know of deleted vm's

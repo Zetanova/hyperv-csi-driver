@@ -6,8 +6,6 @@ using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Management.Automation;
-using System.Management.Automation.Language;
 using System.Threading.Tasks;
 
 namespace HypervCsiDriver
@@ -62,7 +60,6 @@ namespace HypervCsiDriver
                     Type = RPCType.ListVolumesPublishedNodes
                 }
             });
-
 
             //todo GET_CAPACITY
             //todo CREATE_DELETE_SNAPSHOT, LIST_SNAPSHOTS, 

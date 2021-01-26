@@ -13,7 +13,6 @@ namespace HypervCsiDriver.Utils
         public static async IAsyncEnumerable<(string Name, string Value)> ReadKvpPoolAsync(string poolFile = "/var/lib/hyperv/.kvp_pool_3",
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
-
             //info https://docs.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/dn798287(v%3Dws.11)
             using var file = File.OpenRead(poolFile);
 
@@ -46,7 +45,7 @@ namespace HypervCsiDriver.Utils
 
                         buffered -= 2560;
 
-                        if(buffered > 0)
+                        if (buffered > 0)
                             Array.Copy(buffer, 2560, buffer, 0, buffered);
                     }
                 }

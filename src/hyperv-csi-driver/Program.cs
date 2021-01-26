@@ -16,6 +16,9 @@ namespace HypervCsiDriver
     {
         public static void Main(string[] args)
         {
+            //required until powershell 7.2
+            AppContext.SetSwitch("System.Runtime.Serialization.EnableUnsafeBinaryFormatterSerialization", true);
+
             CreateHostBuilder(args).Build().Run();
         }
 

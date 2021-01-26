@@ -72,7 +72,7 @@ spec:
               mountPath: /csi
 
         - name: csi-hyperv
-          image: zetanova/hyperv-csi-driver:1.0.11
+          image: zetanova/hyperv-csi-driver:1.0.12
           #imagePullPolicy: Always
           lifecycle:
             preStop:

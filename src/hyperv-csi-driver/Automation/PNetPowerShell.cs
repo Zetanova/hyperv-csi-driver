@@ -74,7 +74,7 @@ namespace PNet.Automation
 
     public sealed class PNetRunspacePool : IDisposable
     {
-        RunspaceConnectionInfo _connectionInfo;
+        readonly RunspaceConnectionInfo _connectionInfo;
 
         ImmutableList<Runspace> runspaces = ImmutableList<Runspace>.Empty;
 

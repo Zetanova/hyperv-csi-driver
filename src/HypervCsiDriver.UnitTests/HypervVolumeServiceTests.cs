@@ -181,51 +181,6 @@ namespace HypervCsiDriver.UnitTests
         }
 
         [Theory]
-        [InlineData("sv1505", "lnx1521", "test-01")]
-        public async Task attach_detach_volume(string hostName, string vmName, string volumeName)
-        {
-            var service = await Fixture.GetHypervVolumeSerivceAsync(hostName);
-
-            var vm = await service.GetVirtualMachinesAsync(new HypervVirtualMachineFilter { Name = vmName })
-                .FirstAsync();
-
-            Assert.Equal(vmName, vm.Name, true);
-
-            var volume = await service.GetVolumesAsync(new HypervVolumeFilter { Name = volumeName }).FirstAsync();
-
-            Assert.Equal(volumeName, volume.Name, true);
-
-            var vmVolume = await service.GetVirtualMachineVolumesAsync(vm.Id, 
-                new HypervVirtualMachineVolumeFilter 
-                { 
-                    VolumePath = volume.Path,
-                    Host = vm.Host
-                })
-                .FirstOrDefaultAsync();
-
-            if (vmVolume == null)
-            {
-                vmVolume = await service.AttachVolumeAsync(new HypervAttachVolumeRequest
-                {
-                    VMId = vm.Id,
-                    VolumePath = volume.Path,
-                    Host = vm.Host
-                });
-            }
-
-            Assert.Equal(vm.Id, vmVolume.VMId);
-            Assert.Equal(vm.Name, vmVolume.VMName, true);
-            Assert.Equal(volume.Name, vmVolume.VolumeName, true);
-            Assert.Equal(volume.Path, vmVolume.VolumePath, true);
-
-            await service.DetachVolumeAsync(new HypervDetachVolumeRequest
-            {
-                VMId = vm.Id,
-                VolumePath = volume.Path
-            });
-        }
-
-        [Theory]
         //[InlineData("sv1505", "hv05", "influxdb-01", "lnx1519")]
         //[InlineData("sv1505", "hv05", "grafana-01", "lnx1519")]
         //[InlineData("sv1505", "hv05", "mssql-01", "lnx1519")]
@@ -282,6 +237,71 @@ namespace HypervCsiDriver.UnitTests
             Assert.Equal(volume.Name, vmVolume.VolumeName, true);
             Assert.Equal(volume.Path, vmVolume.VolumePath, true);
 
+        }
+
+        [Theory]
+        [InlineData("sv1505", "lnx1521", "test-01", "hv05")]
+        public async Task attach_detach_volume(string hostName, string vmName, string volumeName, string storageName)
+        {
+            var service = await Fixture.GetHypervVolumeSerivceAsync(hostName);
+
+            var vm = await service.GetVirtualMachinesAsync(new HypervVirtualMachineFilter { Name = vmName })
+                .FirstAsync();
+
+            Assert.Equal(vmName, vm.Name, true);
+
+            var foundVolume = await service.GetVolumesAsync(new HypervVolumeFilter 
+            {
+                Name = volumeName,
+                Storage = storageName
+            }).FirstAsync();
+
+            Assert.Equal(volumeName, foundVolume.Name, true);
+
+            HypervVirtualMachineVolumeInfo vmVolume;
+
+            var flow = await service.GetVolumeFlowsAsnyc(new HypervVolumeFlowFilter
+            {
+                VolumePath = foundVolume.Path
+            })
+            .FirstOrDefaultAsync();
+
+            if (flow != null)
+            {
+                Assert.Equal(vm.Id, flow.VMId);
+
+                vmVolume = await service.GetVirtualMachineVolumesAsync(flow.VMId, new HypervVirtualMachineVolumeFilter
+                {
+                    VolumePath = flow.Path,
+                    Host = flow.Host
+                })
+                .FirstAsync();
+            }
+            else
+            {
+                var volume = await service.GetVolumeAsync(foundVolume.Path, null);
+
+                Assert.NotNull(vm);
+
+                vmVolume = await service.AttachVolumeAsync(new HypervAttachVolumeRequest
+                {
+                    VMId = vm.Id,
+                    VolumePath = volume.Path,
+                    Host = vm.Host
+                });
+            }
+
+            Assert.Equal(vm.Id, vmVolume.VMId);
+            Assert.Equal(vm.Name, vmVolume.VMName, true);
+            Assert.Equal(foundVolume.Name, vmVolume.VolumeName, true);
+            Assert.Equal(foundVolume.Path, vmVolume.VolumePath, true);
+
+            await service.DetachVolumeAsync(new HypervDetachVolumeRequest
+            {
+                Host = vm.Host,
+                VMId = vm.Id,
+                VolumePath = foundVolume.Path
+            });
         }
     }
 }

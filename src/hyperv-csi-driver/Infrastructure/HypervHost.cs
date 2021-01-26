@@ -2,9 +2,7 @@
 using PNet.Automation;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Management.Automation;
 using System.Management.Automation.Runspaces;
 using System.Reactive.Linq;
 using System.Threading;
@@ -164,7 +162,7 @@ namespace HypervCsiDriver.Infrastructure
     public sealed class HypervVirtualMachineVolumeFilter
     {
         public string VolumePath { get; set; }
-    
+
         public string Host { get; set; }
     }
 
@@ -214,23 +212,23 @@ namespace HypervCsiDriver.Infrastructure
                 throw new NotImplementedException("shared disk not implemented");
 
             //the smallest valid size for a virtual hard disk is 3MB.
-            var sizeBytes = Math.Max(request.SizeBytes, 3*1024*1024);
-            
+            var sizeBytes = Math.Max(request.SizeBytes, 3 * 1024 * 1024);
+
             //align size to 4096
             sizeBytes = sizeBytes % 4096 > 0 ? sizeBytes + 4096 - (sizeBytes % 4096) : sizeBytes;
 
             var name = request.Name;
-            var storage = !string.IsNullOrEmpty(request.Storage) 
-                    ? request.Storage 
+            var storage = !string.IsNullOrEmpty(request.Storage)
+                    ? request.Storage
                     : await FindFreeStoragesAsync(sizeBytes)
                             .FirstOrDefaultAsync(cancellationToken);
 
             //use default storage
             if (string.IsNullOrEmpty(storage))
-                storage = !string.IsNullOrEmpty(DefaultStorage) 
+                storage = !string.IsNullOrEmpty(DefaultStorage)
                     ? DefaultStorage
                     : throw new InvalidOperationException("no storage found or specified");
-            
+
             //todo check storage free space
 
             //handle windows Path under linux
@@ -256,7 +254,7 @@ namespace HypervCsiDriver.Infrastructure
             commands.Add(cmd);
 
             dynamic item = await _power.InvokeAsync(commands).ThrowOnError().FirstAsync(cancellationToken);
-           
+
             return new HypervVolumeDetail
             {
                 Id = Guid.Parse((string)item.DiskIdentifier),
@@ -390,7 +388,7 @@ namespace HypervCsiDriver.Infrastructure
                     FileSizeBytes = n.Length,
                     Storage = HypervUtils.GetStorageNameFromPath(n.FullName),
                     Shared = false //todo .vhds                    
-                });       
+                });
         }
 
         public IAsyncEnumerable<HypervVirtualMachineInfo> GetVirtualMachinesAsync(HypervVirtualMachineFilter filter)
@@ -434,21 +432,59 @@ namespace HypervCsiDriver.Infrastructure
 
             //todo VHDSet switch
 
+            //Passthru not possible since pwsh 7
+            //Error: Add-VMHardDiskDrive: The Update-ClusterVirtualMachineConfiguration command could not be completed.
+
+            //cmd = new Command("Get-VM");
+            //cmd.Parameters.Add("Id", request.VMId);
+            //commands.Add(cmd);
+
+            //cmd = new Command("Add-VMHardDiskDrive");
+            //cmd.Parameters.Add("Path", request.VolumePath);
+            //cmd.Parameters.Add("Passthru");
+            //commands.Add(cmd);
+
+            //cmd = new Command("Select-Object");
+            //cmd.Parameters.Add("Property", new[] {
+            //    "VMId", "VMName", "ComputerName", "Path",
+            //    "ControllerNumber", "ControllerLocation" 
+            //    //todo VMSnapshotId, VMSnapshotName, MaximumIOPS, MinimumIOPS
+            //});
+            //commands.Add(cmd);
+
             cmd = new Command("Get-VM");
             cmd.Parameters.Add("Id", request.VMId);
             commands.Add(cmd);
 
             cmd = new Command("Add-VMHardDiskDrive");
             cmd.Parameters.Add("Path", request.VolumePath);
-            cmd.Parameters.Add("Passthru");
+            cmd.Parameters.Add("ErrorAction", "SilentlyContinue");
+            //MaximumIOPS, MinimumIOPS
+            commands.Add(cmd);
+
+            _ = await _power.InvokeAsync(commands).LastOrDefaultAsync(cancellationToken);
+
+            commands.Clear();
+
+            cmd = new Command("Get-VM");
+            cmd.Parameters.Add("Id", request.VMId);
+            commands.Add(cmd);
+
+            cmd = new Command("Get-VMHardDiskDrive");
+            commands.Add(cmd);
+
+            cmd = new Command("Where-Object");
+            cmd.Parameters.Add("Property", "Path");
+            cmd.Parameters.Add("eq");
+            cmd.Parameters.Add("Value", request.VolumePath);
             commands.Add(cmd);
 
             cmd = new Command("Select-Object");
-            cmd.Parameters.Add("Property", new[] { 
-                "VMId", "VMName", "ComputerName", "Path", 
+            cmd.Parameters.Add("Property", new[] {
+                "VMId", "VMName", "ComputerName", "Path",
                 "ControllerNumber", "ControllerLocation" 
                 //todo VMSnapshotId, VMSnapshotName, MaximumIOPS, MinimumIOPS
-            });            
+            });
             commands.Add(cmd);
 
             dynamic item = await _power.InvokeAsync(commands).ThrowOnError().FirstAsync(cancellationToken);
@@ -461,7 +497,7 @@ namespace HypervCsiDriver.Infrastructure
                 VolumePath = item.Path,
                 Host = item.ComputerName,
                 ControllerNumber = item.ControllerNumber,
-                ControllerLocation = item.ControllerLocation                    
+                ControllerLocation = item.ControllerLocation
             };
         }
 
@@ -492,11 +528,35 @@ namespace HypervCsiDriver.Infrastructure
             cmd.Parameters.Add("Value", request.VolumePath);
             commands.Add(cmd);
 
+            //since pwsh 7
+            //Error: Remove-VMHardDiskDrive: The Update-ClusterVirtualMachineConfiguration command could not be completed.
+
             cmd = new Command("Remove-VMHardDiskDrive");
-            //cmd.Parameters.Add("Passthru");
+            cmd.Parameters.Add("ErrorAction", "SilentlyContinue");
             commands.Add(cmd);
 
-            var result = await _power.InvokeAsync(commands).ThrowOnError().FirstOrDefaultAsync(cancellationToken);
+            _ = await _power.InvokeAsync(commands).LastOrDefaultAsync(cancellationToken);
+
+            //workaround Update-ClusterVirtualMachineConfiguration error
+            commands.Clear();
+
+            cmd = new Command("Get-VM");
+            cmd.Parameters.Add("Id", request.VMId);
+            commands.Add(cmd);
+
+            cmd = new Command("Get-VMHardDiskDrive");
+            commands.Add(cmd);
+
+            cmd = new Command("Where-Object"); //maybe over script to include .vhds
+            cmd.Parameters.Add("Property", "Path");
+            cmd.Parameters.Add("eq");
+            cmd.Parameters.Add("Value", request.VolumePath);
+            commands.Add(cmd);
+
+            var result = await _power.InvokeAsync(commands).LastOrDefaultAsync(cancellationToken);
+
+            if (result != null)
+                throw new Exception("disk has not be detached");
         }
 
         public IAsyncEnumerable<HypervVirtualMachineVolumeInfo> GetVirtualMachineVolumesAsync(Guid vmId, HypervVirtualMachineVolumeFilter filter)
@@ -517,7 +577,7 @@ namespace HypervCsiDriver.Infrastructure
             cmd = new Command("Get-VMHardDiskDrive");
             commands.Add(cmd);
 
-            if(!string.IsNullOrEmpty(filter?.VolumePath))
+            if (!string.IsNullOrEmpty(filter?.VolumePath))
             {
                 cmd = new Command("Where-Object");
                 cmd.Parameters.Add("Property", "Path");
@@ -553,7 +613,7 @@ namespace HypervCsiDriver.Infrastructure
             var commands = new List<Command>(2);
 
             cmd = new Command("Get-StorageQoSFlow");
-            if(filter != null && filter.VMId != Guid.Empty)
+            if (filter != null && filter.VMId != Guid.Empty)
                 cmd.Parameters.Add("InitiatorId", filter.VMId);
             if (!string.IsNullOrEmpty(filter?.VMName))
                 cmd.Parameters.Add("InitiatorName", filter.VMName);

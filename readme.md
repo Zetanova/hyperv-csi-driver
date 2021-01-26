@@ -35,7 +35,7 @@ Get-NetFirewallRule -Name *ssh*
 iex "& { $(irm https://aka.ms/install-powershell.ps1) } -UseMSI"
 
 #workaround for some sshd bug
-New-Item -ItemType SymbolicLink -path C:\ -Name pwsh -Target "C:\Program Files\PowerShell\6"
+New-Item -ItemType SymbolicLink -path C:\ -Name pwsh -Target "C:\Program Files\PowerShell\7"
 ```
 
 Edit the sshd_config file located at $env:ProgramData\ssh.
@@ -104,9 +104,9 @@ create a ssh secret and deploy the driver
 kubectl create secret generic csi-hyperv-key --from-file=id_ed25519=~/path/to/local-ssh-keys --from-file=known_hosts=~/path/to/known_hosts
 
 #static namespace csi-hyperv
-kubectl apply -f .\deploy\kubernetes-1.15\csi-hyperv\rbac.yaml
-kubectl apply -f .\deploy\kubernetes-1.15\csi-hyperv\controller.yaml
-kubectl apply -f .\deploy\kubernetes-1.15\csi-hyperv\node.yaml
+kubectl apply -f .\deploy\kubernetes-1.17\csi-hyperv\rbac.yaml
+kubectl apply -f .\deploy\kubernetes-1.17\csi-hyperv\controller.yaml
+kubectl apply -f .\deploy\kubernetes-1.17\csi-hyperv\node.yaml
 ```
 
 ## Run example application and validate

@@ -553,10 +553,27 @@ namespace HypervCsiDriver.Infrastructure
             cmd.Parameters.Add("Value", request.VolumePath);
             commands.Add(cmd);
 
-            var result = await _power.InvokeAsync(commands).LastOrDefaultAsync(cancellationToken);
+            cmd = new Command("Select-Object");
+            cmd.Parameters.Add("Property", new[] { "Path",
+                "ControllerNumber", "ControllerLocation"
+            });
+            commands.Add(cmd);
 
-            if (result != null)
-                throw new Exception("disk has not be detached");
+
+            var retry = 2;
+
+            do
+            {
+                var result = await _power.InvokeAsync(commands).LastOrDefaultAsync(cancellationToken);
+
+                if (result is null)
+                    return;
+
+                await Task.Delay(1000);
+            }
+            while (--retry > 0);
+
+            throw new Exception("disk has not be detached");
         }
 
         public IAsyncEnumerable<HypervVirtualMachineVolumeInfo> GetVirtualMachineVolumesAsync(Guid vmId, HypervVirtualMachineVolumeFilter filter)

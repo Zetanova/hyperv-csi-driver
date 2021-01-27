@@ -66,7 +66,7 @@ namespace HypervCsiDriver.UnitTests
         }
 
         [Theory]
-        [InlineData("sv1506", "lnx1521")]
+        [InlineData("sv1505", "lnx1521")]
         public async Task query_virtualmachine_by_name(string hostName, string vmName)
         {
             var host = await Fixture.GetHypervVolumeSerivceAsync(hostName);
@@ -84,7 +84,7 @@ namespace HypervCsiDriver.UnitTests
         }
 
         [Theory]
-        [InlineData("sv1506")]
+        [InlineData("sv1505")]
         public async Task query_volume_details(string hostName, CancellationToken cancellationToken = default)
         {
             var host = await Fixture.GetHypervVolumeSerivceAsync(hostName);

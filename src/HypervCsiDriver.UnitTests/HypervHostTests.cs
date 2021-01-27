@@ -1,10 +1,7 @@
 using HypervCsiDriver.Infrastructure;
 using Microsoft.Extensions.Configuration;
-using PNet.Automation;
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Management.Automation.Runspaces;
 using System.Reactive.Linq;
 using System.Threading.Tasks;
 using Xunit;
@@ -114,7 +111,7 @@ namespace HypervCsiDriver.UnitTests
                 Storage = storageName,
             };
 
-            { 
+            {
                 var info = await host.GetVolumesAsync(filter).FirstOrDefaultAsync();
 
                 if (info != default)
@@ -196,7 +193,7 @@ namespace HypervCsiDriver.UnitTests
 
             var vmVolume = await host.GetVirtualMachineVolumesAsync(vm.Id, new HypervVirtualMachineVolumeFilter { VolumePath = volume.Path }).FirstOrDefaultAsync();
 
-            if(vmVolume == null)
+            if (vmVolume == null)
             {
                 vmVolume = await host.AttachVolumeAsync(new HypervAttachVolumeRequest
                 {
@@ -238,7 +235,7 @@ namespace HypervCsiDriver.UnitTests
         }
 
         [Theory]
-        [InlineData("sv1506", "4698482a-b361-49f6-a9b1-7334e184a9a1","lnx1521")]
+        [InlineData("sv1506", "4698482a-b361-49f6-a9b1-7334e184a9a1", "lnx1521")]
         public async Task query_volume_flow_by_id(string hostName, Guid vmId, string vmName)
         {
             var host = await Fixture.GetHypervHostAsync(hostName);
@@ -248,11 +245,11 @@ namespace HypervCsiDriver.UnitTests
                 VMId = vmId
             };
 
-            await foreach(var flow in host.GetVolumeFlowsAsnyc(filter))
+            await foreach (var flow in host.GetVolumeFlowsAsnyc(filter))
             {
                 Assert.Equal(vmId, flow.VMId);
                 Assert.Equal(vmName, flow.VMName, true);
-            }           
+            }
         }
     }
 }

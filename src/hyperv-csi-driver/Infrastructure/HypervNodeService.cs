@@ -227,6 +227,7 @@ namespace HypervCsiDriver.Infrastructure
                         throw new Exception("invalid device info");
                     case "DEVNAME" when deviceName == value:
                         validDeviceName = true;
+                        break;
                     case "LABEL":
                         deviceLabel = value;
                         break;
@@ -240,7 +241,7 @@ namespace HypervCsiDriver.Infrastructure
             }
                   
             if(!validDeviceName)
-                throw new Exception("invalid device info");
+                throw new Exception("device name ambiguous");
 
             //todo select multiple partitions
 

@@ -135,7 +135,7 @@ namespace HypervCsiDriver.Infrastructure
                         .FirstOrDefaultAsync(cancellationToken);
 
             if (deviceInfo is null)
-                throw new System.Exception("device not found");
+                throw new Exception($"device[{hctl}] not found");
 
             string blockDeviceName = deviceInfo.name;
 
@@ -204,6 +204,8 @@ namespace HypervCsiDriver.Infrastructure
                 PARTUUID=90580121-4dd5-485a-9d07-e20b73cba4bf
             */
 
+            bool validDeviceName = false;
+
             await foreach(var line in _power.InvokeAsync(commands).ThrowOnError()
                 .Select(n => n.BaseObject).OfType<string>()
                 .TakeWhile(n => !string.IsNullOrEmpty(n))
@@ -223,6 +225,8 @@ namespace HypervCsiDriver.Infrastructure
                 {
                     case "DEVNAME" when deviceName != value:
                         throw new Exception("invalid device info");
+                    case "DEVNAME" when deviceName == value:
+                        validDeviceName = true;
                     case "LABEL":
                         deviceLabel = value;
                         break;
@@ -235,6 +239,8 @@ namespace HypervCsiDriver.Infrastructure
                 }
             }
                   
+            if(!validDeviceName)
+                throw new Exception("invalid device info");
 
             //todo select multiple partitions
 

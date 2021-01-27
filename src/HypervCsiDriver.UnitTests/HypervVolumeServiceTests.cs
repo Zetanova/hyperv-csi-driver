@@ -296,12 +296,12 @@ namespace HypervCsiDriver.UnitTests
             Assert.Equal(foundVolume.Name, vmVolume.VolumeName, true);
             Assert.Equal(foundVolume.Path, vmVolume.VolumePath, true);
 
-            await service.DetachVolumeAsync(new HypervDetachVolumeRequest
-            {
-                Host = vm.Host,
-                VMId = vm.Id,
-                VolumePath = foundVolume.Path
-            });
+            //await service.DetachVolumeAsync(new HypervDetachVolumeRequest
+            //{
+            //    Host = vm.Host,
+            //    VMId = vm.Id,
+            //    VolumePath = foundVolume.Path
+            //});
         }
     }
 }

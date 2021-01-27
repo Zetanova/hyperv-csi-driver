@@ -43,5 +43,14 @@ namespace HypervCsiDriver.UnitTests
 
             Assert.Equal(storageName, r);
         }
+
+        [Theory]
+        [InlineData(@"fc9506ef-4937-4123-a68e-0b1f60261042", "/dev/disk/by-id/scsi-*ef0695fc37490b1f60261042")]
+        public async Task create_disk_filter(Guid vhdId, string diskFilter)
+        {
+            var r = HypervUtils.GetDiskFilter(vhdId);
+
+            Assert.Equal(diskFilter, r);
+        }
     }
 }

@@ -87,5 +87,34 @@ namespace HypervCsiDriver.Utils
             }
             return string.Empty;
         }
+
+        public static string GetDiskFilter(Guid vhdId)
+        {
+            //scsi   360022480ef0695fc37490b1f60261042
+            //scsi   360022480-ef0695fc-3749-0b1f60261042
+            //vhdid  fc9506ef-4937-4123-a68e-0b1f60261042
+
+            //Get-ChildItem -Path /dev/disk/by-id/scsi-*ef0695fc37490b1f60261042
+
+            Span<byte> bytes = stackalloc byte[16];
+            vhdId.TryWriteBytes(bytes);
+
+            var sb = new StringBuilder(32);
+
+            sb.Append("/dev/disk/by-id/scsi-*");
+
+            var v = bytes.Slice(0, 4);
+            //v.Reverse();
+            sb.Append(Convert.ToHexString(v).ToLower());
+
+            v = bytes.Slice(4, 2);
+            //v.Reverse();
+            sb.Append(Convert.ToHexString(v).ToLower());
+
+            v = bytes.Slice(10);
+            sb.Append(Convert.ToHexString(v).ToLower());
+
+            return sb.ToString();
+        }
     }
 }

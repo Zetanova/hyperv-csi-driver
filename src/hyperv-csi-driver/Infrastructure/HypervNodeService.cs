@@ -1,4 +1,5 @@
 ﻿using HypervCsiDriver.Hosting;
+using HypervCsiDriver.Utils;
 using Microsoft.Extensions.Options;
 using PNet.Automation;
 using System;
@@ -26,6 +27,8 @@ namespace HypervCsiDriver.Infrastructure
     {
         public string Name { get; set; }
 
+        public Guid VhdId { get; set; }
+
         public int ControllerNumber { get; set; }
 
         public int ControllerLocation { get; set; }
@@ -39,6 +42,8 @@ namespace HypervCsiDriver.Infrastructure
         public bool Raw { get; set; }
 
         public string TargetPath { get; set; }
+
+        public bool ValidateLabel { get; set; } = true;
     }
 
     public sealed class HypervNodeUnmountRequest
@@ -92,102 +97,57 @@ namespace HypervCsiDriver.Infrastructure
             Command cmd;
             var commands = new List<Command>(4);
 
-            //centos 8
-            //lsblk -SJ | ConvertFrom-Json | Select-Object -ExpandProperty blockdevices | where-object -Property hctl -eq -Value "0:0:0:1"
-            //cmd = new Command("lsblk -SJ", true);
-            //commands.Add(cmd);
+            var blockDeviceName = string.Empty;
 
-            //cmd = new Command("ConvertFrom-Json");
-            //commands.Add(cmd);
+            if(request.VhdId != Guid.Empty)
+            {
+                var diskFilter = HypervUtils.GetDiskFilter(request.VhdId);
 
-            //cmd = new Command("Select-Object");
-            //cmd.Parameters.Add("ExpandProperty", "blockdevices");
-            //commands.Add(cmd);
+                cmd = new Command("Get-ChildItem");
+                cmd.Parameters.Add("Path", diskFilter);
+                commands.Add(cmd);
 
-            //cmd = new Command("Where-Object");
-            //cmd.Parameters.Add("Property", "hctl");
-            //cmd.Parameters.Add("eq");
-            //cmd.Parameters.Add("Value", $"{request.ControllerNumber}:0:0:{request.ControllerLocation}");
-            //commands.Add(cmd);
+                cmd = new Command("Select-Object");
+                cmd.Parameters.Add("ExpandProperty", "Target");
+                commands.Add(cmd);
 
-            //dynamic deviceInfo = await _power.InvokeAsync(commands).FirstOrDefaultAsync(cancellationToken);
-            ///*
-            //name       : sdb1
-            //fstype     : ext4
-            //label      : volume-test-01
-            //uuid       : 7c8ee2c4-7583-4c0b-ad7f-f0a829e0344f
-            //mountpoint :
-            // */
+                blockDeviceName = await _power.InvokeAsync(commands).ThrowOnError()
+                    .Select(n => (string)n.BaseObject)
+                    .FirstOrDefaultAsync(cancellationToken);
+            }
+            
+            if(string.IsNullOrEmpty(blockDeviceName))
+            {
+                //over controller number
 
-            //centos 7
-            cmd = new Command("lsblk -S -o 'HCTL,NAME' -nr", true);
-            commands.Add(cmd);
+                commands.Clear();
+                
+                cmd = new Command("lsblk -S -o 'HCTL,NAME' -nr", true);
+                commands.Add(cmd);
 
-            var hctl = $"{request.ControllerNumber}:0:0:{request.ControllerLocation}";
-            var deviceInfo = await _power.InvokeAsync(commands).ThrowOnError()
-                        .Select((dynamic n) => (string[])n.Split(" ", 2, StringSplitOptions.RemoveEmptyEntries))
-                        .Where(n => n.Length == 2 && n[0] == hctl)
-                        .Select(n => new
-                        {
-                            hctl = n[0],
-                            name = n[1]
-                        })
-                        .FirstOrDefaultAsync(cancellationToken);
+                var hctl = $"{request.ControllerNumber}:0:0:{request.ControllerLocation}";
+                var deviceInfo = await _power.InvokeAsync(commands).ThrowOnError()
+                            .Select((dynamic n) => (string[])n.Split(" ", 2, StringSplitOptions.RemoveEmptyEntries))
+                            .Where(n => n.Length == 2 && n[0] == hctl)
+                            .Select(n => new
+                            {
+                                hctl = n[0],
+                                name = n[1]
+                            })
+                            .FirstOrDefaultAsync(cancellationToken);
 
-            if (deviceInfo is null)
-                throw new Exception($"device[{hctl}] not found");
+                if (deviceInfo is null)
+                    throw new Exception($"device[{hctl}] not found");
 
-            string blockDeviceName = deviceInfo.name;
+                blockDeviceName = $"/dev/{deviceInfo.name}";
+            }
 
             if (request.Raw)
                 throw new NotImplementedException("raw block device not implemented");
 
             commands.Clear();
 
-            //centos8
-            //lsblk /dev/sdb -fJ | ConvertFrom-Json | Select -ExpandProperty blockdevices | Select-Object -ExpandProperty children
-            //cmd = new Command($"lsblk /dev/{deviceName} -fJ", true);
-            //commands.Add(cmd);
-
-            //cmd = new Command("ConvertFrom-Json");
-            //commands.Add(cmd);
-
-            //cmd = new Command("Select-Object");
-            //cmd.Parameters.Add("ExpandProperty", "blockdevices");
-            //commands.Add(cmd);
-
-            //cmd = new Command("Select-Object");
-            //cmd.Parameters.Add("ExpandProperty", "children");
-            //cmd.Parameters.Add("ErrorAction", "SilentlyContinue");
-            //commands.Add(cmd);
-
-
-            //not working inside container
-            //cmd = new Command($"lsblk /dev/{deviceName} -f -nro 'NAME,FSTYPE,LABEL,UUID,MOUNTPOINT'", true);
-            //commands.Add(cmd);
-
-            //var partInfo = await _power.InvokeAsync(commands).ThrowOnError()
-            //    .Skip(1) //deviceName
-            //    .Select((dynamic n) => (string[])n.Split(" ", 5))
-            //    .Select(n => n.Concat(Enumerable.Repeat(string.Empty, 5 - n.Length)).ToList())
-            //    .Select(n => new
-            //    {
-            //        Name = n[0],
-            //        FSType = n[1],
-            //        Label = n[2],
-            //        UUID = n[3],
-            //        Mountpoint = n[4],
-            //    })
-            //    .FirstOrDefaultAsync(cancellationToken);
-            /*
-            name       : sdb1
-            fstype     : ext4
-            label      : volume-test-01
-            uuid       : 7c8ee2c4-7583-4c0b-ad7f-f0a829e0344f
-            mountpoint :
-            */
-
-            var deviceName = $"/dev/{blockDeviceName}1";
+            var deviceName = $"{blockDeviceName}1";
             var deviceLabel = string.Empty;
             var deviceUUID = string.Empty;
             var deviceFSType = string.Empty;
@@ -203,8 +163,6 @@ namespace HypervCsiDriver.Infrastructure
                 PARTLABEL=primary
                 PARTUUID=90580121-4dd5-485a-9d07-e20b73cba4bf
             */
-
-            bool validDeviceName = false;
 
             await foreach(var line in _power.InvokeAsync(commands).ThrowOnError()
                 .Select(n => n.BaseObject).OfType<string>()
@@ -225,9 +183,6 @@ namespace HypervCsiDriver.Infrastructure
                 {
                     case "DEVNAME" when deviceName != value:
                         throw new Exception("invalid device info");
-                    case "DEVNAME" when deviceName == value:
-                        validDeviceName = true;
-                        break;
                     case "LABEL":
                         deviceLabel = value;
                         break;
@@ -239,12 +194,9 @@ namespace HypervCsiDriver.Infrastructure
                         break;
                 }
             }
-                  
-            if(!validDeviceName)
-                throw new Exception("device name ambiguous");
 
             //invalid device mount protection
-            if(!string.IsNullOrEmpty(deviceLabel) && !request.Name.StartsWith(deviceLabel))
+            if (request.ValidateLabel && !string.IsNullOrEmpty(deviceLabel) && !request.Name.StartsWith(deviceLabel))
                 throw new Exception("device label ambiguous");
 
             //todo select multiple partitions
@@ -258,7 +210,7 @@ namespace HypervCsiDriver.Infrastructure
 
                 //parted /dev/sdb --script mklabel gpt
                 //parted /dev/sdb --script mkpart primary ext4 0% 100%
-                var script = $"parted --align=opt /dev/{blockDeviceName} --script mklabel gpt mkpart primary {fsType} 1MiB 100%";
+                var script = $"parted --align=opt {blockDeviceName} --script mklabel gpt mkpart primary {fsType} 1MiB 100%";
 
                 cmd = new Command(script, true);
                 commands.Add(cmd);

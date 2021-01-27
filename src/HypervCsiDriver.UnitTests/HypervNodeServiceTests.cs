@@ -60,23 +60,25 @@ namespace HypervCsiDriver.UnitTests
 
         [Theory]
         //[InlineData("lnx1514", "test-volume-longname12345", 0, 4, "/mnt/testvol")]
-        [InlineData("lnx1521", "test", 0, 1, "/drivetest")]
+        [InlineData("lnx1521", "test", "0B6E78B9-2A04-49DE-B4B1-5FEE759D7106",  0, 1, "/drivetest")]
         //[InlineData("lnx1519", "grafana-01", 0, 2, "/mnt/grafana-01")]
         //[InlineData("lnx1519", "influxdb-01", 0, 3, "/mnt/influxdb-01")]
         //[InlineData("lnx1519", "mssql-01", 0, 1, "/mnt/mssql-01")]
-        public async Task mount_device(string hostName, string name, int countrollerNumber, int controllerLocation, string targetPath)
+        public async Task mount_device(string hostName, string name, Guid vhdId, int countrollerNumber, int controllerLocation, string targetPath)
         {
             var service = await Fixture.GetNodeServiceAsync(hostName);
 
             await service.MountDeviceAsync(new HypervNodeMountRequest
             {
                 Name = name,
+                VhdId = vhdId,
                 ControllerNumber = countrollerNumber,
                 ControllerLocation = controllerLocation,
                 FSType = "ext4",
                 Options = Array.Empty<string>(),
                 Readonly = false,
-                TargetPath = targetPath
+                TargetPath = targetPath,
+                ValidateLabel = false
             });
         }
 

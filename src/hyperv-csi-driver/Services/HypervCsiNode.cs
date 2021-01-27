@@ -97,6 +97,10 @@ namespace HypervCsiDriver
                 throw new RpcException(new Status(StatusCode.InvalidArgument, string.Empty),
                     "argument ControllerLocation invalid");
 
+            if(!Guid.TryParse(request.VolumeContext["Id"], out var vhdId))
+                throw new RpcException(new Status(StatusCode.InvalidArgument, string.Empty),
+                    "argument VHD Id invalid");
+
             var ro = false;
             var fsType = string.Empty;
             var mountFlogs = Array.Empty<string>();
@@ -130,9 +134,12 @@ namespace HypervCsiDriver
                         "unknown volume access type");
             }
 
+            
+
             await _service.MountDeviceAsync(new HypervNodeMountRequest
             {
                 Name = request.VolumeId,
+                VhdId = vhdId,
                 ControllerNumber = controllerNumber,
                 ControllerLocation = controllerLocation,
                 FSType = fsType,

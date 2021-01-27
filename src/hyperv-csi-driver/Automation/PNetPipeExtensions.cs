@@ -47,7 +47,7 @@ namespace PNet.Automation
                     .Subscribe(
                         onNext: n =>
                         {
-                            Debug.WriteLine($"PipeControlThread: {Thread.CurrentThread.ManagedThreadId}");
+                            //Debug.WriteLine($"PipeControlThread: {Thread.CurrentThread.ManagedThreadId}");
 
                             switch (n.State)
                             {

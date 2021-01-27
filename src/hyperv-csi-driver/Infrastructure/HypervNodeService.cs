@@ -243,6 +243,10 @@ namespace HypervCsiDriver.Infrastructure
             if(!validDeviceName)
                 throw new Exception("device name ambiguous");
 
+            //invalid device mount protection
+            if(!string.IsNullOrEmpty(deviceLabel) && !request.Name.StartsWith(deviceLabel))
+                throw new Exception("device label ambiguous");
+
             //todo select multiple partitions
 
             var fsType = !string.IsNullOrEmpty(request.FSType) ? request.FSType : "ext4";

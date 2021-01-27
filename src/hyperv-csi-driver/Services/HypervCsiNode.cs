@@ -1,6 +1,6 @@
+using csi;
 using Grpc.Core;
 using HypervCsiDriver.Infrastructure;
-using csi;
 using HypervCsiDriver.Utils;
 using Microsoft.Extensions.Logging;
 using System;
@@ -31,7 +31,7 @@ namespace HypervCsiDriver
             rsp.Capabilities.Add(new NodeServiceCapability
             {
                 Rpc = new NodeServiceCapability.Types.RPC
-                { 
+                {
                     Type = RPCType.StageUnstageVolume
                 }
             });
@@ -56,7 +56,7 @@ namespace HypervCsiDriver
             //https://stackoverflow.com/questions/17530460/code-sample-for-reading-values-from-hyper-v-kvp-component-on-linux-aka-kvp-data
 
             var vmId = string.Empty;
-                       
+
             await foreach (var entry in HypervUtils.ReadKvpPoolAsync().WithCancellation(context.CancellationToken))
             {
                 switch (entry.Name)
@@ -71,7 +71,7 @@ namespace HypervCsiDriver
                 }
             }
 
-            if(string.IsNullOrEmpty(vmId))
+            if (string.IsNullOrEmpty(vmId))
             {
                 throw new RpcException(new Status(StatusCode.InvalidArgument, string.Empty),
                     "hyperv kvp could not be read");
@@ -83,13 +83,13 @@ namespace HypervCsiDriver
                 //todo MaxVolumesPerNode = 4*64 -1 //todo query by lsscsi
                 //maybe AccessibleTopology from FailoverCluster query
             };
-            
+
             return rsp;
         }
 
         public override async Task<NodeStageVolumeResponse> NodeStageVolume(NodeStageVolumeRequest request, ServerCallContext context)
         {
-            if(!int.TryParse(request.PublishContext["ControllerNumber"], out var controllerNumber))
+            if (!int.TryParse(request.PublishContext["ControllerNumber"], out var controllerNumber))
                 throw new RpcException(new Status(StatusCode.InvalidArgument, string.Empty),
                     "argument controllerNumber invalid");
 
@@ -140,12 +140,12 @@ namespace HypervCsiDriver
                 Readonly = ro,
                 Raw = raw,
                 TargetPath = request.StagingTargetPath
-            }, 
+            },
             context.CancellationToken);
 
 
             var rsp = new NodeStageVolumeResponse
-            {
+            {                
             };
 
             return rsp;
@@ -155,9 +155,9 @@ namespace HypervCsiDriver
         {
             await _service.UnmountDeviceAsync(new HypervNodeUnmountRequest
             {
-                 Name = request.VolumeId,
-                 TargetPath = request.StagingTargetPath
-            }, 
+                Name = request.VolumeId,
+                TargetPath = request.StagingTargetPath
+            },
             context.CancellationToken);
 
             var rsp = new NodeUnstageVolumeResponse
@@ -173,7 +173,7 @@ namespace HypervCsiDriver
 
             await _service.PublishDeviceAsync(new HypervNodePublishRequest
             {
-                Name = request.VolumeId, 
+                Name = request.VolumeId,
                 StagingTargetPath = request.StagingTargetPath,
                 PublishTargetPath = request.TargetPath
             },
@@ -210,6 +210,6 @@ namespace HypervCsiDriver
             return base.NodeExpandVolume(request, context);
         }
 
-       
+
     }
 }

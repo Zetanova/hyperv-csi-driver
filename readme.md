@@ -84,6 +84,19 @@ sudo yum install -y powershell
 sudo shutdown -r now
 ```
 
+ubuntu
+```
+sudo apt-get update
+sudo apt-get install -y linux-cloud-tools-generic
+
+sudo apt-get install -y powershell
+
+#edit /etc/ssh/sshd_config
+#add: Subsystem powershell /usr/bin/pwsh -sshs -NoLogo -NoProfile
+
+sudo shutdown -r now
+```
+
 Optional add to all kubernetes VM's up to 4 scsi controllers 
 one scsi controller supports 64 disks 
 

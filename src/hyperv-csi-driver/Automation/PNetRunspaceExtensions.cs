@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Management.Automation;
 using System.Management.Automation.Runspaces;
 using System.Reactive.Linq;
@@ -60,7 +59,7 @@ namespace PNet.Automation
 
         public static async IAsyncEnumerable<PSObject> UntilError(this IAsyncEnumerable<PSObject> source)
         {
-            await foreach(var msg in source)
+            await foreach (var msg in source)
             {
                 yield return msg;
                 if (msg.BaseObject is ErrorRecord || (msg.BaseObject is null && msg.TypeNames.Contains(ErrorRecordTypeName)))
@@ -118,7 +117,7 @@ namespace PNet.Automation
                 else if (msg.BaseObject is null && msg.TypeNames.Contains(ErrorRecordTypeName))
                 {
                     error = (ErrorRecord)(msg as dynamic);
-                    if(terminate(error))
+                    if (terminate(error))
                     {
                         ExceptionDispatchInfo.Capture(error.Exception).Throw();
                         yield break;

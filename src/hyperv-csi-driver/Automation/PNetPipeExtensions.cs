@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Diagnostics;
-using System.Linq;
 using System.Management.Automation;
 using System.Management.Automation.Internal;
 using System.Management.Automation.Runspaces;
@@ -9,7 +8,6 @@ using System.Reactive.Concurrency;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using System.Runtime.ExceptionServices;
-using System.Threading;
 
 namespace PNet.Automation
 {
@@ -36,130 +34,180 @@ namespace PNet.Automation
 
         public static IObservable<PSObject> ToObservable(this Pipeline pipe, IObservable<object> input)
         {
-            var stateSource = Observable.Create<PSObject>(o =>
-                Observable.FromEventPattern<PipelineStateEventArgs>(
+            var pipeStateSource = Observable.FromEventPattern<PipelineStateEventArgs>(
                     a => pipe.StateChanged += a,
-                    a => pipe.StateChanged -= a,
-                    Scheduler.CurrentThread
-                    )
-                    .Select(n => n.EventArgs.PipelineStateInfo)
-                    .StartWith(pipe.PipelineStateInfo)
-                    .Subscribe(
-                        onNext: n =>
-                        {
-                            //Debug.WriteLine($"PipeControlThread: {Thread.CurrentThread.ManagedThreadId}");
+                    a => pipe.StateChanged -= a)
+                    .Select(n => (Pipe: (Pipeline)n.Sender!, State: n.EventArgs.PipelineStateInfo));
 
-                            switch (n.State)
-                            {
-                                //maybe case PipelineState.Stopping:
-                                case PipelineState.Stopped:
-                                case PipelineState.Completed:
-                                    o.OnCompleted();
-                                    break;
-                                case PipelineState.Failed:
-                                    o.OnError(n.Reason);
-                                    break;
-                                case PipelineState.Disconnected:
-                                    o.OnError(n.Reason); //maybe suppress call
-                                    break;
-                            }
-                        }
-                    )
-                );
+            var runspaceStateSource = Observable.FromEventPattern<RunspaceStateEventArgs>(
+                   a => pipe.Runspace.StateChanged += a,
+                   a => pipe.Runspace.StateChanged -= a)
+                   .Select(n => n.EventArgs.RunspaceStateInfo);
 
-            var pipeSource = Observable.Create<PSObject>(o =>
-            {
-                var s1 = pipe.Output.ToObservable()
-                    //.ObserveOn(TaskPoolScheduler.Default) //maybe not required
-                    .Subscribe(
-                        onNext: o.OnNext,
-                        onCompleted: () =>
-                        {
-                            o.OnCompleted();
-                        }
-                    );
+            var runspaceAvailabilitySource = Observable.FromEventPattern<RunspaceAvailabilityEventArgs>(
+                   a => pipe.Runspace.AvailabilityChanged += a,
+                   a => pipe.Runspace.AvailabilityChanged -= a)
+                   .Select(n => n.EventArgs.RunspaceAvailability);
 
-                var s2 = pipe.Error.ToObservable()
-                    //.ObserveOn(TaskPoolScheduler.Default) //maybe not required
-                    .Subscribe(n =>
+
+            var pipeControlSource = Observable.Create<PSObject>(o =>
+               Observable.CombineLatest(
+                   pipeStateSource.StartWith((Pipe: pipe, State: pipe.PipelineStateInfo)),
+                   runspaceStateSource.StartWith(pipe.Runspace.RunspaceStateInfo),
+                   runspaceAvailabilitySource.StartWith(pipe.Runspace.RunspaceAvailability),
+                    (pa, rs, ra) => (rs, ra, pipe: pa.Pipe, ps: pa.State))
+                   .Subscribe(
+                       onNext: n =>
+                       {
+                           //Debug.WriteLine($"Control: Thread[{Thread.CurrentThread.ManagedThreadId}], {n.rs.State}, {n.ra}, {n.ps.State}");
+
+                           switch (n.rs.State)
+                           {
+                               case RunspaceState.BeforeOpen:
+                                   if (n.ra == RunspaceAvailability.None)
+                                       n.pipe.Runspace.OpenAsync();
+                                   break;
+                               case RunspaceState.Opening:
+                                   break;
+                               case RunspaceState.Opened:
+                                   if (n.ra == RunspaceAvailability.Available)
+                                   {
+                                       switch (n.ps.State)
+                                       {
+                                           case PipelineState.NotStarted:
+                                               if (n.pipe.PipelineStateInfo.State == PipelineState.NotStarted
+                                                   && n.pipe.Runspace.RunspaceAvailability == RunspaceAvailability.Available)
+                                                   n.pipe.InvokeAsync();
+                                               break;
+                                           case PipelineState.Running:
+                                               break;
+                                           case PipelineState.Stopped:
+                                               o.OnCompleted();
+                                               break;
+                                           case PipelineState.Completed:
+                                               if (n.pipe.HadErrors)
+                                               {
+                                                   //workaround to signal errors after closed readers
+                                                   o.OnNext(new PSObject(new ErrorRecord(new Exception("dirty-pipe"), "pipe_completed", ErrorCategory.FromStdErr, null)));
+                                               }
+                                               o.OnCompleted();
+                                               break;
+                                           case PipelineState.Failed:
+                                               o.OnError(n.ps.Reason);
+                                               break;
+                                           case PipelineState.Disconnected:
+                                               o.OnError(n.ps.Reason); //maybe suppress call
+                                               break;
+                                       }
+                                   }
+                                   break;
+                               case RunspaceState.Connecting:
+                               case RunspaceState.Disconnecting:
+                                   break;
+                               case RunspaceState.Disconnected:
+                                   o.OnError(n.rs.Reason);
+                                   break;
+                               case RunspaceState.Closing:
+                                   break;
+                               case RunspaceState.Closed:
+                                   o.OnCompleted();
+                                   break;
+                               case RunspaceState.Broken:
+                                   o.OnError(n.rs.Reason);
+                                   break;
+                               default:
+                                   break;
+                           }
+                       }
+                   )
+               );
+
+            var errorSource = pipe.Error.ToObservable()
+                .Materialize()
+                .Select(n => n.Kind switch
+                {
+                    NotificationKind.OnNext => n.Value switch
                     {
-                        switch (n)
-                        {
-                            case PSObject ps: //todo switch for termiating error 
-                                o.OnNext(ps); //none termiating error
-                                break;
-                            case ErrorRecord error:
-                                o.OnError(error.Exception);
-                                break;
-                            case null:
-                                o.OnError(new Exception("null error"));
-                                break;
-                            default:
-                                o.OnError(new Exception($"error[{n.GetType()}] {n}"));
-                                break;
-                        }
-                    });
+                        PSObject o => n,
+                        ErrorRecord r => Notification.CreateOnError<object>(r.Exception),
+                        null => Notification.CreateOnError<object>(new Exception("null error")),
+                        _ => Notification.CreateOnError<object>(new Exception($"error[{n.GetType()}] {n}"))
+                    },
+                    _ => n
+                })
+                .Dematerialize()
+                .OfType<PSObject>();
 
-                //todo merge output and input stream
-                //todo better cancellation
-
-                return new CompositeDisposable(s1, s2);
-            });
+            var pipeSource = Observable.Merge(errorSource, pipe.Output.ToObservable(), Scheduler.CurrentThread);
 
             return Observable.Create<PSObject>(o =>
             {
                 var s0 = input
+                    .SubscribeOn(Scheduler.Default)
                     .Subscribe(
                         onNext: n => pipe.Input.Write(n),
-                        onCompleted: pipe.Input.Close
+                        onCompleted: pipe.Input.Close,
+                        onError: ex => pipe.Input.Close()
                     );
 
-                var s1 = Observable.Merge(pipeSource, stateSource, Scheduler.CurrentThread)
+                var s1 = Observable.Merge(Scheduler.CurrentThread, pipeControlSource, pipeSource)
                     .Subscribe(o);
-
-                pipe.InvokeAsync();
 
                 return new CompositeDisposable(s0, s1, Disposable.Create(() =>
                 {
+                    if (pipe.Input.IsOpen)
+                        pipe.Input.Close();
+
                     if (pipe.PipelineStateInfo.State == PipelineState.Running)
-                        pipe.StopAsync();
+                    {
+                        try
+                        {
+                            pipe.StopAsync();
+                        }
+                        catch (PSObjectDisposedException)
+                        {
+                            //ignore
+                        }
+                    }
+
+                    //Debug.WriteLine("pipe invoke disposed");
                 }));
             });
         }
 
         public static IObservable<T> ToObservable<T>(this PipelineReader<T> reader)
         {
-            return Observable.Create<T>(o => Observable.FromEventPattern(
+            var dataReadySource = Observable.FromEventPattern(
                     a => reader.DataReady += a,
-                    a => reader.DataReady -= a,
-                    Scheduler.CurrentThread)
-                .StartWith(new EventPattern<object>(reader, EventArgs.Empty))
-                .Subscribe(_ =>
-                {
-                    //Debug.WriteLine($"PipeReaderThread: {Thread.CurrentThread.ManagedThreadId}");
+                    a => reader.DataReady -= a)
+                .StartWith(new EventPattern<object>(reader, EventArgs.Empty));
 
-                    do
+            return Observable.Create<T>(o => dataReadySource.Subscribe(a =>
+            {
+                var r = (PipelineReader<T>)a.Sender!;
+
+                //Debug.WriteLine($"PipeReader: Thread[{Thread.CurrentThread.ManagedThreadId}], {r.Count} count to read");
+
+                do
+                {
+                    foreach (var n in r.NonBlockingRead())
                     {
-                        foreach (var n in reader.NonBlockingRead())
+                        if (!AutomationNull.Value.Equals(n))
                         {
-                            if (!AutomationNull.Value.Equals(n))
-                            {
-                                o.OnNext(n);
-                            }
-                            else
-                            {
-                                ;//maybe multiple null inside stream are allowed
-                            }
+                            o.OnNext(n);
+                        }
+                        else
+                        {
+                            ;//maybe multiple null inside stream are allowed
                         }
                     }
-                    while (reader.Count > 0);
-
-                    if (reader.EndOfPipeline)
-                        o.OnCompleted();
                 }
+                while (r.Count > 0);
+
+                if (r.EndOfPipeline)
+                    o.OnCompleted();
+            }
             ));
         }
-
-
     }
 }

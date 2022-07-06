@@ -7,6 +7,7 @@
     <RootNamespace>HypervCsiDriver</RootNamespace>
     <AssemblyName>HypervCsiDriver</AssemblyName>
     <StartupObject>HypervCsiDriver.Program</StartupObject>
+	  <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>

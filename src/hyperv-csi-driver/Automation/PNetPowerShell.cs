@@ -14,19 +14,32 @@ namespace PNet.Automation
 
     public interface IPNetPowerShell
     {
+        public PNetPowerShellOptions Options { get; }
+
         IObservable<T> Run<T>(Func<Runspace, IObservable<T>> func);
+    }
+
+    public sealed record PNetPowerShellOptions
+    {
+        public TimeSpan DefaultTimeout { get; init; } = TimeSpan.FromSeconds(65);
     }
 
     public sealed class PNetPowerShell : IPNetPowerShell, IDisposable
     {
         readonly PNetRunspacePool _pool;
 
+        public int RunspaceCount => _pool.InstanceCount;
+
+        public PNetPowerShellOptions Options { get; } = new PNetPowerShellOptions
+        {
+        };
+
         public PNetPowerShell()
         {
             _pool = new PNetRunspacePool();
         }
 
-        public PNetPowerShell(string hostName, string userName, string keyFile)
+        public PNetPowerShell(string hostName, string userName, string? keyFile)
         {
             if (string.IsNullOrEmpty(hostName))
                 throw new ArgumentNullException(nameof(hostName));
@@ -57,32 +70,35 @@ namespace PNet.Automation
         public IObservable<T> Run<T>(Func<Runspace, IObservable<T>> func)
         {
             return Observable.Using(GetRunspace, c => func(c.Runspace))
-                .SubscribeOn(DefaultScheduler.Instance); //todo work with context
+                .SubscribeOn(Scheduler.Default); //todo work with context
         }
 
-        bool disposed;
+        bool _disposed;
         public void Dispose()
         {
-            if (disposed)
+            if (_disposed)
                 return;
 
             _pool?.Dispose();
 
-            disposed = true;
+            _disposed = true;
         }
     }
 
     public sealed class PNetRunspacePool : IDisposable
     {
-        readonly RunspaceConnectionInfo _connectionInfo;
+        readonly RunspaceConnectionInfo? _connectionInfo = null;
 
-        ImmutableList<Runspace> runspaces = ImmutableList<Runspace>.Empty;
+        ImmutableList<Runspace> _runspaces = ImmutableList<Runspace>.Empty;
+
+        int _instanceCount = 0;
 
         public int MaxSize { get; set; } = 3;
 
+        public int InstanceCount => Volatile.Read(ref _instanceCount);
+
         public PNetRunspacePool()
         {
-            _connectionInfo = null;
         }
 
         public PNetRunspacePool(RunspaceConnectionInfo connectionInfo)
@@ -92,87 +108,111 @@ namespace PNet.Automation
 
         public Runspace Rent()
         {
-            if (disposed) throw new ObjectDisposedException(nameof(PNetRunspacePool));
+            if (_disposed) throw new ObjectDisposedException(nameof(PNetRunspacePool));
 
-            Runspace rs;
+            Runspace? rs;
+
+            ImmutableList<Runspace> current;
+            ImmutableList<Runspace> result;
+            var builder = ImmutableList.CreateBuilder<Runspace>();
+            var removeCount = 0;
+
+            do
             {
-                ImmutableList<Runspace> current;
-                ImmutableList<Runspace> result;
-                do
+                current = _runspaces;
+
+                //cleanup
+                builder.Clear();
+                removeCount = 0;
+
+                foreach (var r in current)
                 {
-                    current = runspaces;
-
-                    //result = current.RemoveAll(n => n.RunspaceAvailability == RunspaceAvailability.None);
-                    //result = current.RemoveAll(n => n.RunspaceStateInfo.State == RunspaceState.Broken);
-
-                    //cleanup
-                    var list = ImmutableList.CreateBuilder<Runspace>();
-                    foreach (var r in current)
+                    switch (r.RunspaceStateInfo.State, r.RunspaceAvailability)
                     {
-                        switch (r.RunspaceStateInfo.State)
-                        {
-                            case RunspaceState.Opening:
-                            case RunspaceState.Opened:
-                                list.Add(r);
-                                break;
-                            //case RunspaceState.Closed: 
-                            //maybe reopen
-                            //break;
-                            default:
+                        case (RunspaceState.Opened, RunspaceAvailability.Available):
+                            builder.Add(r);
+                            break;
+                        //case RunspaceState.Closed: 
+                        //maybe reopen
+                        //break;
+                        default:
+                            try
+                            {
+                                removeCount++;
                                 r.Dispose();
-                                break;
-                        }
+                            }
+                            catch
+                            {
+                                //ignore
+                            }
+                            break;
                     }
-
-                    result = list.ToImmutable();
-
-                    //todo check meaning of RunspaceAvailability.AvailableForNestedCommand
-                    rs = result.FirstOrDefault(n => n.RunspaceAvailability == RunspaceAvailability.Available)
-                        ?? result.FirstOrDefault(n => n.RunspaceAvailability == RunspaceAvailability.AvailableForNestedCommand);
-
-                    if (rs != null)
-                        result = result.Remove(rs);
-
                 }
-                while (Interlocked.Exchange(ref runspaces, result) != current);
-            }
 
-            if (rs is null)
-                rs = CreateRunspace();
-            else
-                rs.ResetRunspaceState(); //reuse
+                rs = builder.FirstOrDefault();
+
+                if (rs is not null)
+                    builder.Remove(rs);
+
+                result = builder.ToImmutable();
+            }
+            while (Interlocked.Exchange(ref _runspaces, result) != current);
+
+            Interlocked.Add(ref _instanceCount, -removeCount);
+
+            rs ??= CreateRunspace();
 
             return rs;
         }
 
         public bool Return(Runspace runspace)
         {
-            if (disposed) return false;
-
-            switch (runspace.RunspaceStateInfo.State)
+            if (_disposed)
             {
-                case RunspaceState.Opening:
-                case RunspaceState.Opened:
+                Interlocked.Decrement(ref _instanceCount);
+                return false;
+            }
+
+            switch (runspace.RunspaceStateInfo.State, runspace.RunspaceAvailability)
+            {
+                //case (RunspaceState.BeforeOpen, _):
+                //    break;
+                case (RunspaceState.Opened, RunspaceAvailability.Available):
                     break;
                 default:
+                    Interlocked.Decrement(ref _instanceCount);
                     return false;
+            }
+
+            try
+            {
+                runspace.ResetRunspaceState();
+            }
+            catch
+            {
+                //hack racy 
+                Interlocked.Decrement(ref _instanceCount);
+                return false;
             }
 
             ImmutableList<Runspace> current;
             ImmutableList<Runspace> result;
             do
             {
-                current = runspaces;
+                current = _runspaces;
 
                 if (current.Contains(runspace))
                     break;
 
                 if (current.Count >= MaxSize)
+                {
+                    Interlocked.Decrement(ref _instanceCount);
                     return false;
+                }
 
                 result = current.Add(runspace);
             }
-            while (Interlocked.Exchange(ref runspaces, result) != current);
+            while (Interlocked.Exchange(ref _runspaces, result) != current);
 
             return true;
         }
@@ -183,68 +223,77 @@ namespace PNet.Automation
                 ? RunspaceFactory.CreateRunspace(_connectionInfo)
                 : RunspaceFactory.CreateRunspace();
 
-            runspace.Open(); //todo use OpenAsync but how to wait on Opened
+            runspace.ApartmentState = ApartmentState.MTA;
 
-            //Debug.WriteLine("runspace opened");
+            //runspace.ThreadOptions = PSThreadOptions.ReuseThread;
+
+            //runspace.OpenAsync();
+
+            Interlocked.Increment(ref _instanceCount);
 
             return runspace;
         }
 
-        private void Runspace_AvailabilityChanged(object sender, RunspaceAvailabilityEventArgs e)
-        {
-            //Debug.WriteLine("Runspace: " + e.RunspaceAvailability);
-        }
-
-        bool disposed = false;
-        void Dispose(bool disposing)
-        {
-            if (disposed)
-                return;
-
-            if (disposing)
-            {
-                var current = runspaces;
-                runspaces = ImmutableList<Runspace>.Empty;
-                foreach (var rs in current)
-                    rs.Dispose();
-            }
-
-            disposed = true;
-        }
-
+        bool _disposed = false;
         public void Dispose()
         {
-            Dispose(true);
-            //GC.SuppressFinalize(this);
+            if (_disposed)
+                return;
+
+            var current = _runspaces;
+            _runspaces = ImmutableList<Runspace>.Empty;
+            foreach (var rs in current)
+            {
+                rs.Dispose();
+                _instanceCount--;
+            }
+
+            _disposed = true;
         }
     }
 
     sealed class PNetRunspaceContainer : IDisposable
     {
+        Runspace? _runspace;
+
         public PNetRunspacePool Pool { get; }
 
-        public Runspace Runspace { get; }
+        public Runspace Runspace => _runspace!;
 
         public PNetRunspaceContainer(PNetRunspacePool pool, Runspace runspace)
         {
             Pool = pool;
-            Runspace = runspace;
+            _runspace = runspace;
         }
 
-        bool disposed;
+        bool _disposed;
         public void Dispose()
         {
-            if (disposed) return;
+            if (_disposed) return;
 
-            if (!Pool.Return(Runspace))
-                Runspace.Dispose();
+            var rs = _runspace;
+            _runspace = null;
+            if (rs is not null && !Pool.Return(rs))
+            {
+                rs.Dispose();
+            }
 
-            disposed = true;
+            _disposed = true;
         }
     }
 
     public static class PNetPowerShellExtensions
     {
+        public static IObservable<T> Run<T>(this IPNetPowerShell power, Func<Runspace, IObservable<T>> func, TimeSpan timeout)
+        {
+            var source = power.Run(func);
+
+            if (timeout != Timeout.InfiniteTimeSpan)
+                source = source.Timeout(timeout);
+
+            return source;
+        }
+
         public static IAsyncEnumerable<PSObject> InvokeAsync(this IPNetPowerShell power, string command)
         {
             return power.InvokeAsync(new Command(command));
@@ -262,22 +311,27 @@ namespace PNet.Automation
 
         public static IAsyncEnumerable<PSObject> InvokeAsync(this IPNetPowerShell power, Command command)
         {
-            return power.Run(r => r.InvokeAsync(command)).ToAsyncEnumerable();
+            return power.Run(r => r.InvokeAsync(command), power.Options.DefaultTimeout).ToAsyncEnumerable();
         }
 
         public static IAsyncEnumerable<PSObject> InvokeAsync(this IPNetPowerShell power, Command command, IObservable<object> input)
         {
-            return power.Run(r => r.InvokeAsync(command, input)).ToAsyncEnumerable();
+            return power.Run(r => r.InvokeAsync(command, input), power.Options.DefaultTimeout).ToAsyncEnumerable();
         }
 
         public static IAsyncEnumerable<PSObject> InvokeAsync(this IPNetPowerShell power, IEnumerable<Command> commands, IObservable<object> input)
         {
-            return power.Run(r => r.InvokeAsync(commands, input)).ToAsyncEnumerable();
+            return power.Run(r => r.InvokeAsync(commands, input), power.Options.DefaultTimeout).ToAsyncEnumerable();
+        }
+
+        public static IAsyncEnumerable<PSObject> InvokeAsync(this IPNetPowerShell power, IEnumerable<Command> commands, TimeSpan timeout)
+        {
+            return power.Run(r => r.InvokeAsync(commands), timeout).ToAsyncEnumerable();
         }
 
         public static IAsyncEnumerable<PSObject> InvokeAsync(this IPNetPowerShell power, IEnumerable<Command> commands)
         {
-            return power.Run(r => r.InvokeAsync(commands)).ToAsyncEnumerable();
+            return power.Run(r => r.InvokeAsync(commands), power.Options.DefaultTimeout).ToAsyncEnumerable(); ;
         }
     }
 }

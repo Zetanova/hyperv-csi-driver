@@ -134,8 +134,6 @@ namespace HypervCsiDriver
                         "unknown volume access type");
             }
 
-            
-
             await _service.MountDeviceAsync(new HypervNodeMountRequest
             {
                 Name = request.VolumeId,
@@ -149,7 +147,6 @@ namespace HypervCsiDriver
                 TargetPath = request.StagingTargetPath
             },
             context.CancellationToken);
-
 
             var rsp = new NodeStageVolumeResponse
             {                

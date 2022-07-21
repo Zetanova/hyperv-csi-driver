@@ -1,0 +1,141 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: csi-hyperv-controller
+  namespace: csi-hyperv
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: csi-hyperv-controller
+  template:
+    metadata:
+      labels:
+        app: csi-hyperv-controller
+    spec:      
+      serviceAccount: csi-hyperv-controller
+      initContainers:
+        - name: ssh-init
+          image: busybox:latest
+          command: ['sh', '-c', 'cp /ssh-key/known_hosts /ssh-tmp/known_hosts']
+          volumeMounts:
+          - mountPath: "/ssh-key"
+            name: ssh-key-dir
+          - mountPath: "/ssh-tmp"
+            name: ssh-tmp-dir
+      containers:
+        - name: csi-provisioner
+          image: k8s.gcr.io/sig-storage/csi-provisioner:v2.1.2
+          args:
+            - "--csi-address=$(ADDRESS)"
+          # - "--enable-leader-election"
+          # - "--http-endpoint=:8080"
+            - "--timeout=60s"
+          # - "--extra-create-metadata" 
+          #Enables the injection of extra PVC and PV metadata as parameters when calling CreateVolume on the driver (keys: "csi.storage.k8s.io/pvc/name", "csi.storage.k8s.io/pvc/namespace", "csi.storage.k8s.io/pv/name")
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+          imagePullPolicy: "IfNotPresent"
+          #ports:
+          #  - containerPort: 8080
+          #    name: http-endpoint
+          #    protocol: TCP
+          #livenessProbe:
+          #  failureThreshold: 1
+          #  httpGet:
+          #    path: /healthz/leader-election
+          #    port: http-endpoint
+          # initialDelaySeconds: 10
+          #  timeoutSeconds: 10
+          #  periodSeconds: 20
+          resources:
+            limits:
+              cpu: 50m
+              memory: 48Mi
+            requests:
+              cpu: 2m
+              memory: 20Mi
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+
+        - name: csi-attacher
+          image: k8s.gcr.io/sig-storage/csi-attacher:v3.2.1
+          args:
+          #  - "--v=5"
+            - "--csi-address=$(ADDRESS)"
+          # - "--leader-election"
+            - "--timeout=60s"
+          env:
+            - name: MY_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: ADDRESS
+              value: /csi/csi.sock
+          imagePullPolicy: "IfNotPresent"
+          resources:
+            limits:
+              cpu: 50m
+              memory: 48Mi
+            requests:
+              cpu: 2m
+              memory: 20Mi
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+
+        - name: csi-hyperv
+          image: zetanova/hyperv-csi-driver:1.19.0
+          #imagePullPolicy: Always
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "rm -f /csi/csi.sock"]
+          env:
+            - name: DRIVER__TYPE
+              value: "Controller"
+            - name: DRIVER__USERNAME
+              value: "Administrator"
+            - name: DRIVER__DefaultStorage
+              value: "hv05"
+            - name: CSI_ENDPOINT
+              value: /csi/csi.sock
+          resources:
+            limits:
+              cpu: 150m
+              memory: 320Mi
+            requests:
+              cpu: 5m
+              memory: 224Mi
+          volumeMounts:
+            - mountPath: /csi
+              name: socket-dir
+            - mountPath: /var/lib/hyperv
+              name: hyperv-dir
+            - mountPath: "/root/.ssh/id_ed25519"
+              subPath: "id_ed25519"
+              name: ssh-key-dir
+            - mountPath: "/root/.ssh/known_hosts"
+              subPath: "known_hosts"
+              name: ssh-tmp-dir
+
+      volumes:
+        - name: socket-dir
+          emptyDir: {}
+        - name: hyperv-dir
+          hostPath:
+            path: /var/lib/hyperv
+            type: Directory
+        - name: ssh-key-dir
+          secret:
+            secretName: csi-hyperv-key
+            items: 
+            - key: id_ed25519
+              path: id_ed25519
+              mode: 256
+            - key: known_hosts
+              path: known_hosts
+        - name: ssh-tmp-dir
+          emptyDir: {}

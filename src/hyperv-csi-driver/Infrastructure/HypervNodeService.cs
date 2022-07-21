@@ -5,6 +5,7 @@ using PNet.Automation;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Management.Automation;
 using System.Management.Automation.Runspaces;
 using System.Threading;
 using System.Threading.Tasks;
@@ -108,12 +109,27 @@ namespace HypervCsiDriver.Infrastructure
                 commands.Add(cmd);
 
                 cmd = new Command("Select-Object");
-                cmd.Parameters.Add("ExpandProperty", "Target");
+                cmd.Parameters.Add("Property", new[] { "Directory", "Target" });
                 commands.Add(cmd);
 
-                blockDeviceName = await _power.InvokeAsync(commands).ThrowOnError()
-                    .Select(n => (string)n.BaseObject)
-                    .FirstOrDefaultAsync(cancellationToken);
+                //hack until Join-Path in pipe
+                dynamic obj = await _power.InvokeAsync(commands).ThrowOnError()
+                       .FirstOrDefaultAsync();
+
+                if (obj is not null)
+                {
+                    commands.Clear();
+
+                    cmd = new Command("Join-Path");
+                    cmd.Parameters.Add("Path", obj.Directory);
+                    cmd.Parameters.Add("ChildPath", obj.Target);
+                    cmd.Parameters.Add("Resolve");
+                    commands.Add(cmd);
+
+                    blockDeviceName = await _power.InvokeAsync(commands).ThrowOnError()
+                        .Select(n => (string)n.BaseObject)
+                       .FirstOrDefaultAsync();
+                }
             }
             
             if(string.IsNullOrEmpty(blockDeviceName))
@@ -142,9 +158,14 @@ namespace HypervCsiDriver.Infrastructure
                 blockDeviceName = $"/dev/{deviceInfo.name}";
             }
 
+            if(string.IsNullOrEmpty(blockDeviceName))
+                throw new Exception($"block device not found");
+
+            //todo check name of blockDeviceName 
+
             if (request.Raw)
                 throw new NotImplementedException("raw block device not implemented");
-
+            
             commands.Clear();
 
             var deviceName = $"{blockDeviceName}1";
@@ -256,8 +277,10 @@ namespace HypervCsiDriver.Infrastructure
             commands.Add(cmd);
 
             ///tmp/testdrive /dev/sdb1 ext4 rw,noatime,seclabel,discard
-            var mountpoint = await _power.InvokeAsync(commands).ThrowOnError()
-                .Select(n => n.BaseObject).OfType<string>().FirstOrDefaultAsync(cancellationToken);
+            var mountpoint = await _power.InvokeAsync(commands)
+                //.ThrowOnError() //BUG with dirty-pipe safeguard
+                .Select(n => n.BaseObject).OfType<string>()
+                .FirstOrDefaultAsync(cancellationToken);
 
             if (string.IsNullOrEmpty(mountpoint))
             {
@@ -339,6 +362,10 @@ namespace HypervCsiDriver.Infrastructure
             Command cmd;
             var commands = new List<Command>(1);
 
+            //create target dir
+            cmd = new Command($"mkdir -p {request.PublishTargetPath}", true);
+            commands.Add(cmd);
+
             //mount --bind /source /target
             cmd = new Command($"mount --bind {request.StagingTargetPath} {request.PublishTargetPath}", true);
             commands.Add(cmd);
@@ -356,6 +383,10 @@ namespace HypervCsiDriver.Infrastructure
 
             //umount /drivetest
             cmd = new Command($"umount {request.TargetPath}", true);
+            commands.Add(cmd);
+
+            //delete target dir
+            cmd = new Command($"rm -df {request.TargetPath}", true);
             commands.Add(cmd);
 
             var result = await _power.InvokeAsync(commands).ThrowOnError().FirstOrDefaultAsync(cancellationToken);

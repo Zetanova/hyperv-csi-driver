@@ -1,14 +1,11 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Net;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using System;
+using System.IO;
+using System.Net;
 
 namespace HypervCsiDriver
 {
@@ -16,7 +13,7 @@ namespace HypervCsiDriver
     {
         public static void Main(string[] args)
         {
-            //required until powershell 7.2
+            //required until powershell 7.2+
             AppContext.SetSwitch("System.Runtime.Serialization.EnableUnsafeBinaryFormatterSerialization", true);
 
             CreateHostBuilder(args).Build().Run();
@@ -24,11 +21,6 @@ namespace HypervCsiDriver
 
         public static IHostBuilder CreateHostBuilder(string[] args) =>
             Host.CreateDefaultBuilder(args)
-                //.ConfigureHostConfiguration((config) =>
-                //{
-                //    config.AddEnvironmentVariables();
-                //    config.AddCommandLine(args);
-                //})
                 .ConfigureWebHostDefaults(webBuilder =>
                 {
                     webBuilder
@@ -36,7 +28,7 @@ namespace HypervCsiDriver
                         {
                             var config = opt.ApplicationServices.GetRequiredService<IConfiguration>();
                             var logger = opt.ApplicationServices.GetRequiredService<ILogger<IWebHostBuilder>>();
-                            
+
                             var csiEP = config["CSI_ENDPOINT"];
                             if (string.IsNullOrEmpty(csiEP))
                             {
@@ -56,7 +48,7 @@ namespace HypervCsiDriver
 
                                     o.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http2;
                                 });
-                            } 
+                            }
                             else
                             {
                                 //unlink socket
@@ -64,17 +56,17 @@ namespace HypervCsiDriver
                                 {
                                     File.Delete(csiEP);
                                     logger.LogWarning($"socket '{csiEP}' unlinked");
-                                }                          
+                                }
 
-                                opt.ListenUnixSocket(csiEP, o => 
+                                opt.ListenUnixSocket(csiEP, o =>
                                 {
                                     o.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http2;
 
-                                    o.UseConnectionLogging("CSI");
+                                    //o.UseConnectionLogging("CSI");
                                 });
                             }
                         })
-                        .UseStartup<Startup>();                        
+                        .UseStartup<Startup>();
                 });
     }
 }

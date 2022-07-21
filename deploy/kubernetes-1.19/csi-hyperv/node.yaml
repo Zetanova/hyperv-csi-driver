@@ -11,21 +11,31 @@ spec:
     metadata:
       labels:
         app: csi-hyperv-node
-        ver: v119
     spec:
       containers:
         - name: csi-node-driver-registrar
-          image: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.0.1
+          image: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.5.0
           args:
           #  - "--v=5"
             - "--csi-address=/csi/csi.sock"
             - "--kubelet-registration-path=/var/lib/kubelet/plugins/eu.zetanova.csi.hyperv/csi.sock"
+            - "--health-port=9809"
           lifecycle:
             preStop:
               exec:
                 command: ["/bin/sh", "-c", "rm -rf /registration/eu.zetanova.csi.hyperv /registration/eu.zetanova.csi.hyperv-reg.sock"]
           securityContext:
             privileged: true
+          ports:
+            - containerPort: 9809
+              name: healthz          
+          livenessProbe:
+            exec:
+              httpGet:
+                path: /healthz
+                port: healthz
+            initialDelaySeconds: 10
+            timeoutSeconds: 5
           resources:
             limits:
               cpu: 10m
@@ -40,21 +50,20 @@ spec:
               mountPath: /registration
 
         - name: csi-hyperv
-          image: zetanova/hyperv-csi-driver:1.0.16
-          #imagePullPolicy: Always
+          image: zetanova/hyperv-csi-driver:1.19.0
           securityContext:
             privileged: true
           lifecycle:
             preStop:
               exec:
-                command: ["/bin/sh", "-c", "rm -f /sockets/hyperv.sock"]
+                command: ["/bin/sh", "-c", "rm -f /csi/csi.sock"]
           args:
             - "--name=eu.zetanova.csi.hyperv"
           env:
             - name: DRIVER__TYPE
               value: Node
             - name: CSI_ENDPOINT
-              value: /sockets/hyperv.sock
+              value: /csi/csi.sock
             #- name: Logging__LogLevel__Default
             #  value: Debug
             #- name: Logging__LogLevel__Grpc
@@ -63,10 +72,10 @@ spec:
               value: Information
           resources:
             limits:
-              cpu: 150m
+              cpu: 500m
               memory: 320Mi
             requests:
-              cpu: 5m
+              cpu: 2m
               memory: 128Mi
           volumeMounts:
             - mountPath: /csi
@@ -75,40 +84,10 @@ spec:
               mountPropagation: Bidirectional
               name: mountpoint-dir
             - mountPath: /dev
-              #mountPropagation: Bidirectional
               name: dev-dir 
             - mountPath: /var/lib/hyperv
               name: hyperv-dir
-            - mountPath: /sockets
-              name: socket-dir
         
-        - name: csi-proxy
-          image: zetanova/grpc-poxy:1.0.1
-          #imagePullPolicy: Always
-          lifecycle:
-            preStop:
-              exec:
-                command: ["/bin/sh", "-c", "rm -f /csi/csi.sock"]
-          env:
-            - name: BIND_TO
-              value: "unix:///csi/csi.sock"
-            - name: PROXY_TO
-              value: "unix:///sockets/hyperv.sock"
-          resources:
-            limits:
-              cpu: 10m
-              memory: 20Mi
-            requests:
-              cpu: 2m
-              memory: 12Mi
-          volumeMounts:
-            - mountPath: /csi
-              name: plugin-dir
-            - mountPath: /var/lib/hyperv
-              name: hyperv-dir
-            - mountPath: /sockets
-              name: socket-dir
-
       volumes:
         - name: registration-dir
           hostPath:
@@ -121,7 +100,7 @@ spec:
         - name: mountpoint-dir
           hostPath:
             path: /var/lib/kubelet/pods
-            type: DirectoryOrCreate
+            type: DirectoryOrCreate            
         - name: dev-dir
           hostPath:
             path: /dev
@@ -130,5 +109,3 @@ spec:
           hostPath:
             path: /var/lib/hyperv
             type: Directory
-        - name: socket-dir
-          emptyDir: {}

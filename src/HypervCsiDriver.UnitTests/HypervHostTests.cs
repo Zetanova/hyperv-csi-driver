@@ -8,16 +8,16 @@ using Xunit;
 
 namespace HypervCsiDriver.UnitTests
 {
-    public sealed class HypervNodeFixture : IDisposable
+    public sealed class HypervHostFixture : IDisposable
     {
         public IConfiguration Configuration { get; set; }
 
         IHypervHost _host;
 
-        public HypervNodeFixture()
+        public HypervHostFixture()
         {
             var builder = new ConfigurationBuilder()
-                .AddUserSecrets<HypervNodeFixture>()
+                .AddUserSecrets<HypervHostFixture>()
                 .AddEnvironmentVariables();
 
             Configuration = builder.Build();
@@ -46,11 +46,11 @@ namespace HypervCsiDriver.UnitTests
 
     [Trait("Type", "Integration")]
     [Trait("Category", "HypervHost")]
-    public sealed class HypervHostTests : IClassFixture<HypervNodeFixture>
+    public sealed class HypervHostTests : IClassFixture<HypervHostFixture>
     {
-        public HypervNodeFixture Fixture { get; }
+        public HypervHostFixture Fixture { get; }
 
-        public HypervHostTests(HypervNodeFixture fixture)
+        public HypervHostTests(HypervHostFixture fixture)
         {
             Fixture = fixture;
         }

@@ -28,7 +28,7 @@ namespace HypervCsiDriver
             var rsp = new GetPluginInfoResponse
             {
                 Name = "eu.zetanova.csi.hyperv",
-                VendorVersion = "0.1.0"
+                VendorVersion = "1.19.0"
             };
 
             rsp.Manifest.Add("url", "https://github.com/Zetanova/hyperv-csi-driver");

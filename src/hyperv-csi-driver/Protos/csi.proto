@@ -8,11 +8,46 @@ import "google/protobuf/wrappers.proto";
 
 option go_package = "csi";
 option csharp_namespace = "csi";
- 
+
+extend google.protobuf.EnumOptions {
+  // Indicates that this enum is OPTIONAL and part of an experimental
+  // API that may be deprecated and eventually removed between minor
+  // releases.
+  bool alpha_enum = 1060;
+}
+extend google.protobuf.EnumValueOptions {
+  // Indicates that this enum value is OPTIONAL and part of an
+  // experimental API that may be deprecated and eventually removed
+  // between minor releases.
+  bool alpha_enum_value = 1060;
+}
 extend google.protobuf.FieldOptions {
   // Indicates that a field MAY contain information that is sensitive
   // and MUST be treated as such (e.g. not logged).
   bool csi_secret = 1059;
+
+  // Indicates that this field is OPTIONAL and part of an experimental
+  // API that may be deprecated and eventually removed between minor
+  // releases.
+  bool alpha_field = 1060;
+}
+extend google.protobuf.MessageOptions {
+  // Indicates that this message is OPTIONAL and part of an experimental
+  // API that may be deprecated and eventually removed between minor
+  // releases.
+  bool alpha_message = 1060;
+}
+extend google.protobuf.MethodOptions {
+  // Indicates that this method is OPTIONAL and part of an experimental
+  // API that may be deprecated and eventually removed between minor
+  // releases.
+  bool alpha_method = 1060;
+}
+extend google.protobuf.ServiceOptions {
+  // Indicates that this service is OPTIONAL and part of an experimental
+  // API that may be deprecated and eventually removed between minor
+  // releases.
+  bool alpha_service = 1060;
 }
 service Identity {
   rpc GetPluginInfo(GetPluginInfoRequest)
@@ -61,6 +96,11 @@ service Controller {
 
   rpc ControllerExpandVolume (ControllerExpandVolumeRequest)
     returns (ControllerExpandVolumeResponse) {}
+
+  rpc ControllerGetVolume (ControllerGetVolumeRequest)
+    returns (ControllerGetVolumeResponse) {
+        option (alpha_method) = true;
+    }
 }
 
 service Node {
@@ -356,6 +396,19 @@ message VolumeCapability {
     // to untrusted entities. The total size of this repeated field
     // SHALL NOT exceed 4 KiB.
     repeated string mount_flags = 2;
+
+    // If SP has VOLUME_MOUNT_GROUP node capability and CO provides
+    // this field then SP MUST ensure that the volume_mount_group
+    // parameter is passed as the group identifier to the underlying
+    // operating system mount system call, with the understanding
+    // that the set of available mount call parameters and/or
+    // mount implementations may vary across operating systems.
+    // Additionally, new file and/or directory entries written to
+    // the underlying filesystem SHOULD be permission-labeled in such a
+    // manner, unless otherwise modified by a workload, that they are
+    // both readable and writable by said mount group identifier.
+    // This is an OPTIONAL field.
+    string volume_mount_group = 3 [(alpha_field) = true];
   }
 
   // Specify how a volume can be accessed.
@@ -381,6 +434,18 @@ message VolumeCapability {
       // Can be published as read/write at multiple nodes
       // simultaneously.
       MULTI_NODE_MULTI_WRITER = 5;
+
+      // Can only be published once as read/write at a single workload
+      // on a single node, at any given time. SHOULD be used instead of
+      // SINGLE_NODE_WRITER for COs using the experimental
+      // SINGLE_NODE_MULTI_WRITER capability.
+      SINGLE_NODE_SINGLE_WRITER = 6 [(alpha_enum_value) = true];
+
+      // Can be published as read/write at multiple workloads on a
+      // single node simultaneously. SHOULD be used instead of
+      // SINGLE_NODE_WRITER for COs using the experimental
+      // SINGLE_NODE_MULTI_WRITER capability.
+      SINGLE_NODE_MULTI_WRITER = 7 [(alpha_enum_value) = true];
     }
 
     // This field is REQUIRED.
@@ -684,9 +749,10 @@ message ControllerPublishVolumeRequest {
   // `Secrets Requirements` section on how to use this field.
   map<string, string> secrets = 5 [(csi_secret) = true];
 
-  // Volume context as returned by CO in CreateVolumeRequest. This field
-  // is OPTIONAL and MUST match the volume_context of the volume
-  // identified by `volume_id`.
+  // Volume context as returned by SP in
+  // CreateVolumeResponse.Volume.volume_context.
+  // This field is OPTIONAL and MUST match the volume_context of the
+  // volume identified by `volume_id`.
   map<string, string> volume_context = 6;
 }
 
@@ -732,9 +798,10 @@ message ValidateVolumeCapabilitiesRequest {
   // The ID of the volume to check. This field is REQUIRED.
   string volume_id = 1;
 
-  // Volume context as returned by CO in CreateVolumeRequest. This field
-  // is OPTIONAL and MUST match the volume_context of the volume
-  // identified by `volume_id`.
+  // Volume context as returned by SP in
+  // CreateVolumeResponse.Volume.volume_context.
+  // This field is OPTIONAL and MUST match the volume_context of the
+  // volume identified by `volume_id`.
   map<string, string> volume_context = 2;
 
   // The capabilities that the CO wants to check for the volume. This
@@ -813,6 +880,12 @@ message ListVolumesResponse {
     // published_node_ids MAY include nodes not published to or
     // reported by the SP. The CO MUST be resilient to that.
     repeated string published_node_ids = 1;
+
+    // Information about the current condition of the volume.
+    // This field is OPTIONAL.
+    // This field MUST be specified if the
+    // VOLUME_CONDITION controller capability is supported.
+    VolumeCondition volume_condition = 2 [(alpha_field) = true];
   }
 
   message Entry {
@@ -834,6 +907,40 @@ message ListVolumesResponse {
   // field is OPTIONAL.
   // An empty string is equal to an unspecified field value.
   string next_token = 2;
+}
+message ControllerGetVolumeRequest {
+  option (alpha_message) = true;
+
+  // The ID of the volume to fetch current volume information for.
+  // This field is REQUIRED.
+  string volume_id = 1;
+}
+
+message ControllerGetVolumeResponse {
+  option (alpha_message) = true;
+
+  message VolumeStatus{
+    // A list of all the `node_id` of nodes that this volume is
+    // controller published on.
+    // This field is OPTIONAL.
+    // This field MUST be specified if the PUBLISH_UNPUBLISH_VOLUME
+    // controller capability is supported.
+    // published_node_ids MAY include nodes not published to or
+    // reported by the SP. The CO MUST be resilient to that.
+    repeated string published_node_ids = 1;
+
+    // Information about the current condition of the volume.
+    // This field is OPTIONAL.
+    // This field MUST be specified if the
+    // VOLUME_CONDITION controller capability is supported.
+    VolumeCondition volume_condition = 2;
+  }
+
+  // This field is REQUIRED
+  Volume volume = 1;
+
+  // This field is REQUIRED.
+  VolumeStatus status = 2;
 }
 message GetCapacityRequest {
   // If specified, the Plugin SHALL report the capacity of the storage
@@ -866,6 +973,42 @@ message GetCapacityResponse {
   // storage. This field is REQUIRED.
   // The value of this field MUST NOT be negative.
   int64 available_capacity = 1;
+
+  // The largest size that may be used in a
+  // CreateVolumeRequest.capacity_range.required_bytes field
+  // to create a volume with the same parameters as those in
+  // GetCapacityRequest.
+  //
+  // If `volume_capabilities` or `parameters` is
+  // specified in the request, the Plugin SHALL take those into
+  // consideration when calculating the minimum volume size of the
+  // storage.
+  //
+  // This field is OPTIONAL. MUST NOT be negative.
+  // The Plugin SHOULD provide a value for this field if it has
+  // a maximum size for individual volumes and leave it unset
+  // otherwise. COs MAY use it to make decision about
+  // where to create volumes.
+  google.protobuf.Int64Value maximum_volume_size = 2
+    [(alpha_field) = true];
+
+  // The smallest size that may be used in a
+  // CreateVolumeRequest.capacity_range.limit_bytes field
+  // to create a volume with the same parameters as those in
+  // GetCapacityRequest.
+  //
+  // If `volume_capabilities` or `parameters` is
+  // specified in the request, the Plugin SHALL take those into
+  // consideration when calculating the maximum volume size of the
+  // storage.
+  //
+  // This field is OPTIONAL. MUST NOT be negative.
+  // The Plugin SHOULD provide a value for this field if it has
+  // a minimum size for individual volumes and leave it unset
+  // otherwise. COs MAY use it to make decision about
+  // where to create volumes.
+  google.protobuf.Int64Value minimum_volume_size = 3
+    [(alpha_field) = true];
 }
 message ControllerGetCapabilitiesRequest {
   // Intentionally empty.
@@ -909,6 +1052,34 @@ message ControllerServiceCapability {
       // Indicates the SP supports the
       // ListVolumesResponse.entry.published_nodes field
       LIST_VOLUMES_PUBLISHED_NODES = 10;
+
+      // Indicates that the Controller service can report volume
+      // conditions.
+      // An SP MAY implement `VolumeCondition` in only the Controller
+      // Plugin, only the Node Plugin, or both.
+      // If `VolumeCondition` is implemented in both the Controller and
+      // Node Plugins, it SHALL report from different perspectives.
+      // If for some reason Controller and Node Plugins report
+      // misaligned volume conditions, CO SHALL assume the worst case
+      // is the truth.
+      // Note that, for alpha, `VolumeCondition` is intended be
+      // informative for humans only, not for automation.
+      VOLUME_CONDITION = 11 [(alpha_enum_value) = true];
+
+      // Indicates the SP supports the ControllerGetVolume RPC.
+      // This enables COs to, for example, fetch per volume
+      // condition after a volume is provisioned.
+      GET_VOLUME = 12 [(alpha_enum_value) = true];
+
+      // Indicates the SP supports the SINGLE_NODE_SINGLE_WRITER and/or
+      // SINGLE_NODE_MULTI_WRITER access modes.
+      // These access modes are intended to replace the
+      // SINGLE_NODE_WRITER access mode to clarify the number of writers
+      // for a volume on a single node. Plugins MUST accept and allow
+      // use of the SINGLE_NODE_WRITER access mode when either
+      // SINGLE_NODE_SINGLE_WRITER and/or SINGLE_NODE_MULTI_WRITER are
+      // supported, in order to permit older COs to continue working.
+      SINGLE_NODE_MULTI_WRITER = 13 [(alpha_enum_value) = true];
     }
 
     Type type = 1;
@@ -1107,6 +1278,10 @@ message NodeStageVolumeRequest {
   // CO SHALL be responsible for creating the directory if it does not
   // exist.
   // This is a REQUIRED field.
+  // This field overrides the general CSI size limit.
+  // SP SHOULD support the maximum path length allowed by the operating
+  // system/filesystem, but, at a minimum, SP MUST accept a max path
+  // length of at least 128 bytes.
   string staging_target_path = 3;
 
   // Volume capability describing how the CO intends to use this volume.
@@ -1120,9 +1295,10 @@ message NodeStageVolumeRequest {
   // section on how to use this field.
   map<string, string> secrets = 5 [(csi_secret) = true];
 
-  // Volume context as returned by CO in CreateVolumeRequest. This field
-  // is OPTIONAL and MUST match the volume_context of the volume
-  // identified by `volume_id`.
+  // Volume context as returned by SP in
+  // CreateVolumeResponse.Volume.volume_context.
+  // This field is OPTIONAL and MUST match the volume_context of the
+  // volume identified by `volume_id`.
   map<string, string> volume_context = 6;
 }
 
@@ -1136,6 +1312,10 @@ message NodeUnstageVolumeRequest {
   // The path at which the volume was staged. It MUST be an absolute
   // path in the root filesystem of the process serving this request.
   // This is a REQUIRED field.
+  // This field overrides the general CSI size limit.
+  // SP SHOULD support the maximum path length allowed by the operating
+  // system/filesystem, but, at a minimum, SP MUST accept a max path
+  // length of at least 128 bytes.
   string staging_target_path = 2;
 }
 
@@ -1159,6 +1339,10 @@ message NodePublishVolumeRequest {
   // It MUST be set if the Node Plugin implements the
   // `STAGE_UNSTAGE_VOLUME` node capability.
   // This is an OPTIONAL field.
+  // This field overrides the general CSI size limit.
+  // SP SHOULD support the maximum path length allowed by the operating
+  // system/filesystem, but, at a minimum, SP MUST accept a max path
+  // length of at least 128 bytes.
   string staging_target_path = 3;
 
   // The path to which the volume will be published. It MUST be an
@@ -1173,6 +1357,10 @@ message NodePublishVolumeRequest {
   // mounted directory at target_path.
   // Creation of target_path is the responsibility of the SP.
   // This is a REQUIRED field.
+  // This field overrides the general CSI size limit.
+  // SP SHOULD support the maximum path length allowed by the operating
+  // system/filesystem, but, at a minimum, SP MUST accept a max path
+  // length of at least 128 bytes.
   string target_path = 4;
 
   // Volume capability describing how the CO intends to use this volume.
@@ -1190,9 +1378,10 @@ message NodePublishVolumeRequest {
   // section on how to use this field.
   map<string, string> secrets = 7 [(csi_secret) = true];
 
-  // Volume context as returned by CO in CreateVolumeRequest. This field
-  // is OPTIONAL and MUST match the volume_context of the volume
-  // identified by `volume_id`.
+  // Volume context as returned by SP in
+  // CreateVolumeResponse.Volume.volume_context.
+  // This field is OPTIONAL and MUST match the volume_context of the
+  // volume identified by `volume_id`.
   map<string, string> volume_context = 8;
 }
 
@@ -1207,6 +1396,10 @@ message NodeUnpublishVolumeRequest {
   // path in the root filesystem of the process serving this request.
   // The SP MUST delete the file or directory it created at this path.
   // This is a REQUIRED field.
+  // This field overrides the general CSI size limit.
+  // SP SHOULD support the maximum path length allowed by the operating
+  // system/filesystem, but, at a minimum, SP MUST accept a max path
+  // length of at least 128 bytes.
   string target_path = 2;
 }
 
@@ -1222,6 +1415,10 @@ message NodeGetVolumeStatsRequest {
   // It MUST be an absolute path in the root filesystem of
   // the process serving this request.
   // This is a REQUIRED field.
+  // This field overrides the general CSI size limit.
+  // SP SHOULD support the maximum path length allowed by the operating
+  // system/filesystem, but, at a minimum, SP MUST accept a max path
+  // length of at least 128 bytes.
   string volume_path = 2;
 
   // The path where the volume is staged, if the plugin has the
@@ -1229,12 +1426,21 @@ message NodeGetVolumeStatsRequest {
   // If not empty, it MUST be an absolute path in the root
   // filesystem of the process serving this request.
   // This field is OPTIONAL.
+  // This field overrides the general CSI size limit.
+  // SP SHOULD support the maximum path length allowed by the operating
+  // system/filesystem, but, at a minimum, SP MUST accept a max path
+  // length of at least 128 bytes.
   string staging_target_path = 3;
 }
 
 message NodeGetVolumeStatsResponse {
   // This field is OPTIONAL.
   repeated VolumeUsage usage = 1;
+  // Information about the current condition of the volume.
+  // This field is OPTIONAL.
+  // This field MUST be specified if the VOLUME_CONDITION node
+  // capability is supported.
+  VolumeCondition volume_condition = 2 [(alpha_field) = true];
 }
 
 message VolumeUsage {
@@ -1258,6 +1464,20 @@ message VolumeUsage {
   // Units by which values are measured. This field is REQUIRED.
   Unit unit = 4;
 }
+
+// VolumeCondition represents the current condition of a volume.
+message VolumeCondition {
+  option (alpha_message) = true;
+
+  // Normal volumes are available for use and operating optimally.
+  // An abnormal volume does not meet these criteria.
+  // This field is REQUIRED.
+  bool abnormal = 1;
+
+  // The message describing the condition of the volume.
+  // This field is REQUIRED.
+  string message = 2;
+}
 message NodeGetCapabilitiesRequest {
   // Intentionally empty.
 }
@@ -1280,6 +1500,34 @@ message NodeServiceCapability {
       GET_VOLUME_STATS = 2;
       // See VolumeExpansion for details.
       EXPAND_VOLUME = 3;
+      // Indicates that the Node service can report volume conditions.
+      // An SP MAY implement `VolumeCondition` in only the Node
+      // Plugin, only the Controller Plugin, or both.
+      // If `VolumeCondition` is implemented in both the Node and
+      // Controller Plugins, it SHALL report from different
+      // perspectives.
+      // If for some reason Node and Controller Plugins report
+      // misaligned volume conditions, CO SHALL assume the worst case
+      // is the truth.
+      // Note that, for alpha, `VolumeCondition` is intended to be
+      // informative for humans only, not for automation.
+      VOLUME_CONDITION = 4 [(alpha_enum_value) = true];
+
+      // Indicates the SP supports the SINGLE_NODE_SINGLE_WRITER and/or
+      // SINGLE_NODE_MULTI_WRITER access modes.
+      // These access modes are intended to replace the
+      // SINGLE_NODE_WRITER access mode to clarify the number of writers
+      // for a volume on a single node. Plugins MUST accept and allow
+      // use of the SINGLE_NODE_WRITER access mode (subject to the
+      // processing rules for NodePublishVolume), when either
+      // SINGLE_NODE_SINGLE_WRITER and/or SINGLE_NODE_MULTI_WRITER are
+      // supported, in order to permit older COs to continue working.
+      SINGLE_NODE_MULTI_WRITER = 5 [(alpha_enum_value) = true];
+
+      // Indicates that Node service supports mounting volumes
+      // with provided volume group identifier during node stage
+      // or node publish RPC calls.
+      VOLUME_MOUNT_GROUP = 6 [(alpha_enum_value) = true];
     }
 
     Type type = 1;
@@ -1302,6 +1550,10 @@ message NodeGetInfoResponse {
   // `ControllerPublishVolume`, to refer to this node.
   // The SP is NOT responsible for global uniqueness of node_id across
   // multiple SPs.
+  // This field overrides the general CSI size limit.
+  // The size of this field SHALL NOT exceed 256 bytes. The general
+  // CSI size limit, 128 byte, is RECOMMENDED for best backwards
+  // compatibility.
   string node_id = 1;
 
   // Maximum number of volumes that controller can publish to the node.
@@ -1335,6 +1587,10 @@ message NodeExpandVolumeRequest {
   string volume_id = 1;
 
   // The path on which volume is available. This field is REQUIRED.
+  // This field overrides the general CSI size limit.
+  // SP SHOULD support the maximum path length allowed by the operating
+  // system/filesystem, but, at a minimum, SP MUST accept a max path
+  // length of at least 128 bytes.
   string volume_path = 2;
 
   // This allows CO to specify the capacity requirements of the volume
@@ -1350,6 +1606,10 @@ message NodeExpandVolumeRequest {
   // If not empty, it MUST be an absolute path in the root
   // filesystem of the process serving this request.
   // This field is OPTIONAL.
+  // This field overrides the general CSI size limit.
+  // SP SHOULD support the maximum path length allowed by the operating
+  // system/filesystem, but, at a minimum, SP MUST accept a max path
+  // length of at least 128 bytes.
   string staging_target_path = 4;
 
   // Volume capability describing how the CO intends to use this volume.
@@ -1362,6 +1622,12 @@ message NodeExpandVolumeRequest {
   // access_type from given volume_path for the volume and perform
   // node expansion. This is an OPTIONAL field.
   VolumeCapability volume_capability = 5;
+
+  // Secrets required by plugin to complete node expand volume request.
+  // This field is OPTIONAL. Refer to the `Secrets Requirements`
+  // section on how to use this field.
+  map<string, string> secrets = 6
+    [(csi_secret) = true, (alpha_field) = true];
 }
 
 message NodeExpandVolumeResponse {

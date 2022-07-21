@@ -23,7 +23,7 @@ namespace HypervCsiDriver.UnitTests
         public HypervVolumeServiceFixture()
         {
             var builder = new ConfigurationBuilder()
-                .AddUserSecrets<HypervNodeFixture>()
+                .AddUserSecrets<HypervHostFixture>()
                 .AddEnvironmentVariables();
 
             Configuration = builder.Build();

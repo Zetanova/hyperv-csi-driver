@@ -50,7 +50,7 @@ spec:
               mountPath: /registration
 
         - name: csi-hyperv
-          image: zetanova/hyperv-csi-driver:1.19.0
+          image: zetanova/hyperv-csi-driver:1.19.1
           securityContext:
             privileged: true
           lifecycle:
@@ -68,7 +68,9 @@ spec:
             #  value: Debug
             #- name: Logging__LogLevel__Grpc
             #  value: Debug
-            - name: Logging__LogLevel__Microsoft
+            #- name: Logging__LogLevel__Microsoft
+            #  value: Information
+            - name: Logging__LogLevel__HypervCsiDriver
               value: Information
           resources:
             limits:
@@ -76,7 +78,7 @@ spec:
               memory: 124Mi
             requests:
               cpu: 2m
-              memory: 48Mi
+              memory: 64Mi
           volumeMounts:
             - mountPath: /csi
               name: plugin-dir

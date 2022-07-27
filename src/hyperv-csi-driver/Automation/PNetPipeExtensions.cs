@@ -85,7 +85,7 @@ namespace PNet.Automation
                                                o.OnCompleted();
                                                break;
                                            case PipelineState.Completed:
-                                               if (n.pipe.HadErrors)
+                                               if (n.pipe.HadErrors && !n.pipe.Error.EndOfPipeline)
                                                {
                                                    //workaround to signal errors after closed readers
                                                    o.OnNext(new PSObject(new ErrorRecord(new Exception("dirty-pipe"), "pipe_completed", ErrorCategory.FromStdErr, null)));

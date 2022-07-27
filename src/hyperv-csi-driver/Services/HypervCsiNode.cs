@@ -97,7 +97,7 @@ namespace HypervCsiDriver
                 throw new RpcException(new Status(StatusCode.InvalidArgument, string.Empty),
                     "argument ControllerLocation invalid");
 
-            if(!Guid.TryParse(request.VolumeContext["Id"], out var vhdId))
+            if (!Guid.TryParse(request.VolumeContext["Id"], out var vhdId))
                 throw new RpcException(new Status(StatusCode.InvalidArgument, string.Empty),
                     "argument VHD Id invalid");
 
@@ -149,7 +149,7 @@ namespace HypervCsiDriver
             context.CancellationToken);
 
             var rsp = new NodeStageVolumeResponse
-            {                
+            {
             };
 
             return rsp;
@@ -165,7 +165,7 @@ namespace HypervCsiDriver
             context.CancellationToken);
 
             var rsp = new NodeUnstageVolumeResponse
-            {
+            {                 
             };
 
             return rsp;

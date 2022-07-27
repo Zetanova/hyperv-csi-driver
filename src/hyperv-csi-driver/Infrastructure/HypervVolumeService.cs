@@ -55,7 +55,8 @@ namespace HypervCsiDriver.Infrastructure
             {
                 host = new HypervHost(hostName, _options.UserName, _options.KeyFile)
                 {
-                    DefaultStorage = _options.DefaultStorage
+                    DefaultStorage = _options.DefaultStorage,
+                    
                 };
 
                 ImmutableDictionary<string, HypervHost> current;
@@ -64,8 +65,8 @@ namespace HypervCsiDriver.Infrastructure
                 {
                     current = _hosts;
                     result = current.SetItem(hostName, host);
-
-                } while (Interlocked.Exchange(ref _hosts, result) != current);
+                }
+                while (Interlocked.Exchange(ref _hosts, result) != current);
             }
             return host;
         }

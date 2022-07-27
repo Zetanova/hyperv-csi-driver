@@ -196,7 +196,7 @@ namespace HypervCsiDriver.Infrastructure
 
         public string DefaultStorage { get; set; } = string.Empty;
 
-        public HypervHost(string hostName, string userName, string keyFile = null)
+        public HypervHost(string hostName, string userName, string? keyFile = null)
         {
             _power = new PNetPowerShell(hostName, userName, keyFile);
             _hostName = hostName;
@@ -218,16 +218,19 @@ namespace HypervCsiDriver.Infrastructure
             sizeBytes = sizeBytes % 4096 > 0 ? sizeBytes + 4096 - (sizeBytes % 4096) : sizeBytes;
 
             var name = request.Name;
-            var storage = !string.IsNullOrEmpty(request.Storage)
-                    ? request.Storage
-                    : await FindFreeStoragesAsync(sizeBytes)
-                            .FirstOrDefaultAsync(cancellationToken);
+            var storage = request.Storage;
+
+            //find free storage
+            if (string.IsNullOrEmpty(storage))
+                storage = await FindFreeStoragesAsync(sizeBytes).FirstOrDefaultAsync(cancellationToken);
 
             //use default storage
             if (string.IsNullOrEmpty(storage))
-                storage = !string.IsNullOrEmpty(DefaultStorage)
-                    ? DefaultStorage
-                    : throw new InvalidOperationException("no storage found or specified");
+                storage = DefaultStorage;
+
+            //storage required
+            if (string.IsNullOrEmpty(storage))
+                throw new InvalidOperationException("no storage found or specified");
 
             //todo check storage free space
 
@@ -686,5 +689,14 @@ namespace HypervCsiDriver.Infrastructure
         {
             _power.Dispose();
         }
+    }
+
+
+    public sealed class HypervHostStorage
+    {
+        public string Name { get; init; }
+
+        public string Path { get; init; }
+
     }
 }

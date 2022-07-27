@@ -106,5 +106,94 @@ namespace HypervCsiDriver.UnitTests
 
             Assert.Equal(result, !string.IsNullOrEmpty(mountpoint));
         }
+
+        [Theory]
+        [InlineData("lnx1513", "/dev/sdd1")]
+        public async Task EnumDeviceLabelsAsync(string hostName, string deviceName)
+        {
+            var power = Fixture.GetPower(hostName);
+
+            Command cmd;
+            var commands = new List<Command>(2);
+
+            cmd = new Command($"blkid -o export -c /dev/null -D {deviceName}", true);
+            commands.Add(cmd);
+
+            await foreach (var line in power.InvokeAsync(commands).ThrowOnError()
+                .Select(n => n.BaseObject).OfType<string>()
+                .TakeWhile(n => !string.IsNullOrEmpty(n)))
+            {
+                var name = line;
+                var value = string.Empty;
+
+                int i = line.IndexOf('=');
+                if (i > -1)
+                {
+                    name = line.Substring(0, i);
+                    value = line.Substring(i + 1);
+                }
+
+                switch (name)
+                {
+                    case "DEVNAME" when deviceName != value:
+                        throw new Exception("invalid device info");
+                    case "LABEL":
+                        Assert.NotEmpty(value);
+                        break;
+                    case "UUID":
+                        Assert.NotEmpty(value);
+                        break;
+                    case "TYPE":
+                        Assert.NotEmpty(value);
+                        break;
+                }
+            }
+        }
+
+        /// <summary>
+        /// https://github.com/PowerShell/PowerShell/issues/17772
+        /// </summary>
+        [Fact]        
+        public async Task RemoteExitCode()
+        {
+            
+
+            //hack for remote connection
+            if (Runspace.DefaultRunspace == null)
+            {
+                var defaultRunspace = RunspaceFactory.CreateRunspace();
+                defaultRunspace.Open();
+
+                Runspace.DefaultRunspace = defaultRunspace;
+            }
+
+            var localRs = RunspaceFactory.CreateRunspace();
+
+            var localPipe = localRs.CreatePipeline("pwsh -c 'exit 123'");
+
+            localRs.Open();
+
+            var localResult = localPipe.Invoke();
+
+            Assert.True(localPipe.HadErrors);
+            Assert.Empty(localResult);
+
+            localRs.Close();
+
+
+            var connectionInfo = new SSHConnectionInfo("root", "lnx1513", null);
+            var remoteRS = RunspaceFactory.CreateRunspace(connectionInfo);
+
+            var remotePipe = remoteRS.CreatePipeline("pwsh -c 'exit 123'");
+
+            remoteRS.Open();
+
+            var remoteResult = remotePipe.Invoke();
+
+            Assert.True(remotePipe.HadErrors);
+            Assert.Empty(remoteResult);
+
+            remoteRS.Close();
+        }
     }
 }

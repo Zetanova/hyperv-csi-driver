@@ -406,37 +406,37 @@ namespace HypervCsiDriver
 
         public override async Task<ListVolumesResponse> ListVolumes(ListVolumesRequest request, ServerCallContext context)
         {
-            //todo request.MaxEntries,
-            //request.StartingToken
-
-            var volumeSource = _service.GetVolumesAsync(null);
-
-            if (!string.IsNullOrEmpty(request.StartingToken))
-            {
-                if (!int.TryParse(request.StartingToken, out var startIndex))
-                    throw new RpcException(new Status(StatusCode.Aborted, string.Empty),
-                        "invalid starting_token");
-
-                volumeSource = volumeSource.Skip(startIndex);
-            }
-
-            if (request.MaxEntries > 0)
-                volumeSource = volumeSource.Take(request.MaxEntries);
-
-            var foundVolumes = await volumeSource
-                .ToListAsync(context.CancellationToken);
+            //todo cache query
+            var volumes = await _service.GetVolumesAsync(null).ToListAsync(context.CancellationToken);
 
             var flows = await _service.GetVolumeFlowsAsnyc(null)
                 .ToListAsync(context.CancellationToken);
 
-            var nextIndex = request.MaxEntries + foundVolumes.Count;
+            var startIndex = 0;
+            if (!string.IsNullOrEmpty(request.StartingToken))
+            {
+                if (!int.TryParse(request.StartingToken, out startIndex))
+                    throw new RpcException(new Status(StatusCode.Aborted, string.Empty),
+                        "invalid starting_token");
+            }
 
             var rsp = new ListVolumesResponse
-            {
-                NextToken = request.MaxEntries > 0 ? nextIndex.ToString() : string.Empty
+            {                
             };
 
-            foreach (var foundVolume in foundVolumes)
+            if (request.MaxEntries > 0 && (volumes.Count-startIndex) > request.MaxEntries)
+                rsp.NextToken = (startIndex + request.MaxEntries).ToString();
+
+
+            var volumeSource = volumes.AsEnumerable();
+
+            if(startIndex > 0)
+                volumeSource = volumeSource.Skip(startIndex);
+
+            if (request.MaxEntries > 0)
+                volumeSource = volumeSource.Take(request.MaxEntries);
+
+            foreach (var foundVolume in volumeSource)
             {
                 var volumeFlows = flows.Where(n => StringComparer.OrdinalIgnoreCase.Equals(foundVolume.Path, n.Path)).ToList();
 
@@ -458,7 +458,7 @@ namespace HypervCsiDriver
                     }
                     catch (Exception ex)
                     {
-                        errors.Add(new Exception($"Getting volume details of '{foundVolume.Name}' at host '{hostName ?? "default"}' failed.", ex));
+                        errors.Add(new Exception($"Getting volume details of '{foundVolume.Name}' at host '{hostName ?? "default"}' with path '{foundVolume.Path}' failed.", ex));
                     }
                 }
 

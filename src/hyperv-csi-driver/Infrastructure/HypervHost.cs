@@ -332,7 +332,8 @@ namespace HypervCsiDriver.Infrastructure
             //todo ParentPath, FragmentationPercentage, VHDFormat
             commands.Add(cmd);
 
-            dynamic item = await _power.InvokeAsync(commands).FirstAsync(cancellationToken);
+            dynamic item = await _power.InvokeAsync(commands).ThrowOnError()
+                .FirstAsync(cancellationToken);
 
             return new HypervVolumeDetail
             {
@@ -361,7 +362,7 @@ namespace HypervCsiDriver.Infrastructure
             cmd = new Command("Get-ChildItem");
             cmd.Parameters.Add("Path", HypervDefaults.ClusterStoragePath);
             if (!string.IsNullOrEmpty(filter?.Storage))
-                cmd.Parameters.Add("Filter", $"{filter.Storage}");
+                cmd.Parameters.Add("Filter", filter.Storage);
             commands.Add(cmd);
 
             cmd = new Command("Get-ChildItem");

@@ -67,6 +67,13 @@ namespace HypervCsiDriver
                     Type = RPCType.VolumeCondition
                 }
             });
+            rsp.Capabilities.Add(new ControllerServiceCapability
+            {
+                Rpc = new ControllerServiceCapability.Types.RPC
+                {
+                    Type = RPCType.GetVolume
+                }
+            });
 
             //todo GET_CAPACITY
             //todo CREATE_DELETE_SNAPSHOT, LIST_SNAPSHOTS, 
@@ -491,6 +498,60 @@ namespace HypervCsiDriver
             return rsp;
         }
 
+        public override async Task<ControllerGetVolumeResponse> ControllerGetVolume(ControllerGetVolumeRequest request, ServerCallContext context)
+        {
+            var foundVolumes = await _service.GetVolumesAsync(new HypervVolumeFilter { Name = request.VolumeId }).ToListAsync(context.CancellationToken);
+            
+            if (foundVolumes.Count == 0)
+                throw new RpcException(new Status(StatusCode.NotFound, string.Empty), "volume not found");
+            if (foundVolumes.Count > 1)
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, string.Empty), "volume name ambiguous");
+           
+            var r = await _service.GetVolumeDetailsAsync(foundVolumes)
+                .SingleAsync(context.CancellationToken);
+
+            var rsp = new ControllerGetVolumeResponse
+            {
+                Volume = new Volume
+                {
+                    VolumeId = r.Info.Name
+                    //AccessibleTopology
+                    //ContentSource 
+                },
+                Status = new ControllerGetVolumeResponse.Types.VolumeStatus
+                {
+                }
+            };
+
+            if (r.Detail is not null)
+            {
+                var d = r.Detail;
+                rsp.Volume.CapacityBytes = (long)(d.SizeBytes);
+                rsp.Volume.VolumeContext.Add("Id", d.Id.ToString());
+                rsp.Volume.VolumeContext.Add("Storage", d.Storage);
+                rsp.Volume.VolumeContext.Add("Path", d.Path);
+                rsp.Status.VolumeCondition = new VolumeCondition
+                {
+                    Abnormal = false,
+                    Message = d.Attached ? "attached" : "detached"
+                };
+            }
+
+            if (r.Nodes.Length > 0)
+                rsp.Status.PublishedNodeIds.Add(r.Nodes);
+
+            if (r.Error is not null)
+            {
+                rsp.Status.VolumeCondition = new VolumeCondition
+                {
+                    Abnormal = true,
+                    Message = r.Error.Message
+                };
+            }
+
+            return rsp;
+        }
+
         public override Task<GetCapacityResponse> GetCapacity(GetCapacityRequest request, ServerCallContext context)
         {
             return base.GetCapacity(request, context);
@@ -515,5 +576,7 @@ namespace HypervCsiDriver
         {
             return base.ListSnapshots(request, context);
         }
+
+        
     }
 }

@@ -60,11 +60,19 @@ namespace HypervCsiDriver
                     Type = RPCType.ListVolumesPublishedNodes
                 }
             });
+            rsp.Capabilities.Add(new ControllerServiceCapability
+            {
+                Rpc = new ControllerServiceCapability.Types.RPC
+                {
+                    Type = RPCType.VolumeCondition
+                }
+            });
 
             //todo GET_CAPACITY
             //todo CREATE_DELETE_SNAPSHOT, LIST_SNAPSHOTS, 
             //todo CLONE_VOLUME, EXPAND_VOLUME
             //maybe PUBLISH_READONLY
+            //todo SingleNodeMultiWriter
 
             return Task.FromResult(rsp);
         }
@@ -436,47 +444,13 @@ namespace HypervCsiDriver
             if (request.MaxEntries > 0)
                 volumeSource = volumeSource.Take(request.MaxEntries);
 
-            foreach (var foundVolume in volumeSource)
+            await foreach(var r in _service.GetVolumeDetailsAsync(volumeSource, context.CancellationToken))
             {
-                var volumeFlows = flows.Where(n => StringComparer.OrdinalIgnoreCase.Equals(foundVolume.Path, n.Path)).ToList();
-
-                var hostNames = volumeFlows.Select(n => n.Host)
-                            .Distinct(StringComparer.OrdinalIgnoreCase)
-                            .DefaultIfEmpty(null);
-
-                var errors = new List<Exception>();
-                HypervVolumeDetail? v = null;
-
-                foreach (var hostName in hostNames)
-                {
-                    //maybe stale record after remount to other node
-
-                    try
-                    {
-                        v = await _service.GetVolumeAsync(foundVolume.Path, hostName, context.CancellationToken);
-                        continue;
-                    }
-                    catch (Exception ex)
-                    {
-                        errors.Add(new Exception($"Getting volume details of '{foundVolume.Name}' at host '{hostName ?? "default"}' with path '{foundVolume.Path}' failed.", ex));
-                    }
-                }
-
-                if (v is null)
-                {
-                    throw errors.Count switch
-                    {
-                        1 => errors[0],
-                        _ => new AggregateException($"Getting volume details of '{foundVolume.Name}' failed.", errors),
-                    };
-                }
-
                 var entry = new ListVolumesResponse.Types.Entry
                 {
                     Volume = new Volume
                     {
-                        VolumeId = foundVolume.Name,
-                        CapacityBytes = (long)v.SizeBytes,
+                        VolumeId = r.Info.Name
                         //AccessibleTopology
                         //ContentSource 
                     },
@@ -484,11 +458,32 @@ namespace HypervCsiDriver
                     {
                     }
                 };
-                entry.Volume.VolumeContext.Add("Id", v.Id.ToString());
-                entry.Volume.VolumeContext.Add("Storage", v.Storage);
-                entry.Volume.VolumeContext.Add("Path", v.Path);
 
-                entry.Status.PublishedNodeIds.Add(volumeFlows.Select(n => n.VMId.ToString()));
+                if(r.Detail is not null)
+                {
+                    var d = r.Detail;
+                    entry.Volume.CapacityBytes = (long)(d.SizeBytes);
+                    entry.Volume.VolumeContext.Add("Id", d.Id.ToString());
+                    entry.Volume.VolumeContext.Add("Storage", d.Storage);
+                    entry.Volume.VolumeContext.Add("Path", d.Path);
+                    entry.Status.VolumeCondition = new VolumeCondition
+                    {
+                        Abnormal = false,
+                        Message = d.Attached ? "attached" : "detached"
+                    };
+                }
+
+                if(r.Nodes.Length > 0)
+                    entry.Status.PublishedNodeIds.Add(r.Nodes);
+
+                if(r.Error is not null)
+                {
+                    entry.Status.VolumeCondition = new VolumeCondition
+                    {
+                        Abnormal = true,
+                        Message = r.Error.Message
+                    };
+                }
 
                 rsp.Entries.Add(entry);
             }

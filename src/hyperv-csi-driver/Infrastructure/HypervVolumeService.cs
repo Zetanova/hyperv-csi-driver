@@ -16,7 +16,7 @@ namespace HypervCsiDriver.Infrastructure
 
         Task<HypervVolumeDetail> GetVolumeAsync(string path, CancellationToken cancellationToken = default);
 
-        Task<HypervVolumeDetail> GetVolumeAsync(string path, string hostName, CancellationToken cancellationToken = default);
+        Task<HypervVolumeDetail> GetVolumeAsync(string path, string? hostName, CancellationToken cancellationToken = default);
 
         Task<HypervVolumeDetail> CreateVolumeAsync(HypervCreateVolumeRequest request, CancellationToken cancellationToken = default);
 
@@ -31,6 +31,8 @@ namespace HypervCsiDriver.Infrastructure
         IAsyncEnumerable<HypervVirtualMachineInfo> GetVirtualMachinesAsync(HypervVirtualMachineFilter filter, CancellationToken cancellationToken = default);
 
         IAsyncEnumerable<HypervVolumeFlowInfo> GetVolumeFlowsAsnyc(HypervVolumeFlowFilter filter);
+
+        IAsyncEnumerable<HypervVolumeDetailResult> GetVolumeDetailsAsync(IEnumerable<HypervVolumeInfo> volumes, CancellationToken cancellationToken = default);
     }
 
     public sealed class HypervVolumeService : IHypervVolumeService, IDisposable
@@ -148,7 +150,7 @@ namespace HypervCsiDriver.Infrastructure
             return await GetHost(flow?.Host ?? _options.HostName).GetVolumeAsync(path, cancellationToken);
         }
 
-        public async Task<HypervVolumeDetail> GetVolumeAsync(string path, string hostName, CancellationToken cancellationToken = default)
+        public async Task<HypervVolumeDetail> GetVolumeAsync(string path, string? hostName, CancellationToken cancellationToken = default)
         {
             return await GetHost(hostName ?? _options.HostName).GetVolumeAsync(path, cancellationToken);
         }
@@ -163,6 +165,8 @@ namespace HypervCsiDriver.Infrastructure
             return GetHost(_options.HostName).GetVolumesAsync(filter);
         }
 
+
+
         public void Dispose()
         {
             var hosts = _hosts;
@@ -170,6 +174,52 @@ namespace HypervCsiDriver.Infrastructure
 
             foreach (var host in hosts.Values)
                 host.Dispose();
+        }
+
+        public async IAsyncEnumerable<HypervVolumeDetailResult> GetVolumeDetailsAsync(IEnumerable<HypervVolumeInfo> volumes, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            var flows = await GetVolumeFlowsAsnyc(null)
+                .ToListAsync(cancellationToken);
+
+            foreach (var foundVolume in volumes)
+            {
+                var volumeFlows = flows.Where(n => StringComparer.OrdinalIgnoreCase.Equals(foundVolume.Path, n.Path)).ToList();
+
+                var hostNames = volumeFlows.Select(n => n.Host)
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .DefaultIfEmpty(null);
+
+                var errors = new List<Exception>();
+                HypervVolumeDetail? v = null;
+
+                foreach (var hostName in hostNames)
+                {
+                    //maybe stale record after remount to other node
+
+                    try
+                    {
+                        v = await GetVolumeAsync(foundVolume.Path, hostName, cancellationToken);
+                        continue;
+                    }
+                    catch (Exception ex)
+                    {
+                        errors.Add(new Exception($"Getting volume details of '{foundVolume.Name}' at host '{hostName ?? "default"}' with path '{foundVolume.Path}' failed.", ex));
+                    }
+                }
+
+                yield return new HypervVolumeDetailResult
+                {
+                    Info = foundVolume,
+                    Detail = v,
+                    Nodes = volumeFlows.Select(n => n.VMId.ToString()).Distinct().ToArray(),
+                    Error = (v is null, errors.Count) switch
+                    {
+                        (false, _) => null,
+                        (_, 1) => errors[0],
+                        _ => new AggregateException($"Getting volume details of '{foundVolume.Name}' failed.", errors)
+                    }
+                };
+            }
         }
     }
 }

@@ -70,7 +70,7 @@ namespace PNet.Automation
                     case RunspaceState.BeforeOpen:
                         if (n.ra == RunspaceAvailability.None)
                         {
-                            if(n.pipe.Runspace.RunspaceIsRemote)
+                            if (n.pipe.Runspace.RunspaceIsRemote)
                             {
                                 //maybe only required if a ssh-keyfile is used
                                 defaultRunspace = RunspaceFactory.CreateRunspace();
@@ -93,6 +93,8 @@ namespace PNet.Automation
                                         n.pipe.InvokeAsync();
                                     break;
                                 case PipelineState.Running:
+                                    break;
+                                case PipelineState.Stopping:
                                     break;
                                 case PipelineState.Stopped:
                                     o.OnCompleted();
@@ -220,8 +222,7 @@ namespace PNet.Automation
 
                 if (r.EndOfPipeline)
                     o.OnCompleted();
-            }
-            ));
+            }));
         }
     }
 }

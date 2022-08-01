@@ -89,26 +89,21 @@ namespace HypervCsiDriver.UnitTests
         {
             var host = await Fixture.GetHypervVolumeSerivceAsync(hostName);
 
-            var volumeSource = host.GetVolumesAsync(null).Take(10);
-
-            var foundVolumes = await volumeSource
-                .ToListAsync(cancellationToken);
+            var foundVolumes = await host.GetVolumesAsync(null).ToListAsync(cancellationToken);
 
             Assert.NotEmpty(foundVolumes);
 
-            var flows = await host.GetVolumeFlowsAsnyc(null)
-                .ToListAsync(cancellationToken);
-
-            //Assert.NotEmpty(flows);
-
-            foreach (var foundVolume in foundVolumes)
+            await foreach (var r in host.GetVolumeDetailsAsync(foundVolumes, cancellationToken))
             {
-                var volumeFlows = flows.Where(n => StringComparer.OrdinalIgnoreCase.Equals(foundVolume.Path, n.Path)).ToList();
-
-                var v = await host.GetVolumeAsync(foundVolume.Path, volumeFlows.FirstOrDefault()?.Host, cancellationToken);
-
-                Assert.True(v.SizeBytes > 0);
-                Assert.Equal(foundVolume.Path, v.Path, true);
+                if(r.Detail is not null)
+                {
+                    Assert.True(r.Detail.SizeBytes > 0);
+                    Assert.Equal(r.Info.Path, r.Detail.Path, true);
+                } 
+                else
+                {
+                    ;
+                }
             }
         }
 

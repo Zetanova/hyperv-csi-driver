@@ -83,7 +83,7 @@ namespace PNet.Automation
 
         readonly SemaphoreSlim _lock = new SemaphoreSlim(1, 1);
 
-        readonly List<RunspaceEntry> _entries = new List<RunspaceEntry>(10);
+        List<RunspaceEntry> _entries = new List<RunspaceEntry>(10);
 
         TaskCompletionSource<RunspaceEntry> _tcs = null;
 
@@ -276,10 +276,16 @@ namespace PNet.Automation
 
             _disposed = true;
 
-            foreach (var entry in _entries)
-                entry.Runspace.Dispose();
+            _lock.Dispose();
 
-            _entries.Clear();
+            var entries = _entries;
+            _entries = null;
+
+            if(entries is not null)
+            {
+                foreach (var entry in entries)
+                    entry.Runspace.Dispose();
+            }
         }
 
         sealed class RunspaceEntry

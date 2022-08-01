@@ -51,7 +51,6 @@ namespace PNet.Automation
                    a => pipe.Runspace.AvailabilityChanged -= a)
                    .Select(n => n.EventArgs.RunspaceAvailability);
 
-
             var pipeControlSource = Observable.Create<PSObject>(o =>
                Observable.CombineLatest(
                    pipeStateSource.StartWith((Pipe: pipe, State: pipe.PipelineStateInfo)),
@@ -104,6 +103,11 @@ namespace PNet.Automation
                                     {
                                         //workaround to signal errors after closed readers
                                         o.OnNext(new PSObject(new ErrorRecord(new Exception("dirty-pipe"), "pipe_completed", ErrorCategory.FromStdErr, null)));
+                                    }
+                                    if (!n.pipe.Output.EndOfPipeline)
+                                    {
+                                        //workaround to signal unread items
+                                        o.OnNext(new PSObject(new ErrorRecord(new Exception("clogged-pipe"), "pipe_completed", ErrorCategory.OperationStopped, null)));
                                     }
                                     o.OnCompleted();
                                     break;

@@ -73,8 +73,7 @@ namespace HypervCsiDriver
 
             if (string.IsNullOrEmpty(vmId))
             {
-                throw new RpcException(new Status(StatusCode.InvalidArgument, string.Empty),
-                    "hyperv kvp could not be read");
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "hyperv kvp could not be read"));
             }
 
             var rsp = new NodeGetInfoResponse
@@ -90,16 +89,13 @@ namespace HypervCsiDriver
         public override async Task<NodeStageVolumeResponse> NodeStageVolume(NodeStageVolumeRequest request, ServerCallContext context)
         {
             if (!int.TryParse(request.PublishContext["ControllerNumber"], out var controllerNumber))
-                throw new RpcException(new Status(StatusCode.InvalidArgument, string.Empty),
-                    "argument controllerNumber invalid");
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "argument controllerNumber invalid"));
 
             if (!int.TryParse(request.PublishContext["ControllerLocation"], out var controllerLocation))
-                throw new RpcException(new Status(StatusCode.InvalidArgument, string.Empty),
-                    "argument ControllerLocation invalid");
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "argument ControllerLocation invalid"));
 
             if (!Guid.TryParse(request.VolumeContext["Id"], out var vhdId))
-                throw new RpcException(new Status(StatusCode.InvalidArgument, string.Empty),
-                    "argument VHD Id invalid");
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "argument VHD Id invalid"));
 
             var ro = false;
             var fsType = string.Empty;
@@ -114,8 +110,7 @@ namespace HypervCsiDriver
                     ro = true;
                     break;
                 default:
-                    throw new RpcException(new Status(StatusCode.InvalidArgument, string.Empty),
-                        "not supported volume access mode");
+                    throw new RpcException(new Status(StatusCode.InvalidArgument, "not supported volume access mode"));
             }
 
             switch (request.VolumeCapability.AccessTypeCase)
@@ -130,8 +125,7 @@ namespace HypervCsiDriver
                     break;
                 //case VolumeCapability.AccessTypeOneofCase.None:
                 default:
-                    throw new RpcException(new Status(StatusCode.InvalidArgument, string.Empty),
-                        "unknown volume access type");
+                    throw new RpcException(new Status(StatusCode.InvalidArgument, "unknown volume access type"));
             }
 
             await _service.MountDeviceAsync(new HypervNodeMountRequest
@@ -165,7 +159,7 @@ namespace HypervCsiDriver
             context.CancellationToken);
 
             var rsp = new NodeUnstageVolumeResponse
-            {                 
+            {
             };
 
             return rsp;

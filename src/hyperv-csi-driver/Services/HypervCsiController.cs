@@ -4,7 +4,6 @@ using HypervCsiDriver.Infrastructure;
 using HypervCsiDriver.Utils;
 using Microsoft.Extensions.Logging;
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -133,8 +132,7 @@ namespace HypervCsiDriver
                         shared = false;
                         break;
                     default:
-                        throw new RpcException(new Status(StatusCode.InvalidArgument, string.Empty),
-                            "not supported volume access mode");
+                        throw new RpcException(new Status(StatusCode.InvalidArgument, "not supported volume access mode"));
                 }
 
                 switch (entry.AccessTypeCase)
@@ -150,8 +148,7 @@ namespace HypervCsiDriver
                         break;
                     //case VolumeCapability.AccessTypeOneofCase.None:
                     default:
-                        throw new RpcException(new Status(StatusCode.InvalidArgument, string.Empty),
-                            "unknown volume access type");
+                        throw new RpcException(new Status(StatusCode.InvalidArgument, "unknown volume access type"));
                 }
             }
 
@@ -160,7 +157,7 @@ namespace HypervCsiDriver
 
             var foundVolumes = await _service.GetVolumesAsync(new HypervVolumeFilter { Name = name }).ToListAsync(context.CancellationToken);
             if (foundVolumes.Count > 1)
-                throw new RpcException(new Status(StatusCode.AlreadyExists, string.Empty), "volume name ambiguous");
+                throw new RpcException(new Status(StatusCode.AlreadyExists, "volume name ambiguous"));
 
 
             HypervVolumeDetail volume;
@@ -169,9 +166,9 @@ namespace HypervCsiDriver
                 var foundVolume = foundVolumes[0];
 
                 if (!string.IsNullOrEmpty(storage) && !StringComparer.OrdinalIgnoreCase.Equals(storage, foundVolume.Storage))
-                    throw new RpcException(new Status(StatusCode.AlreadyExists, string.Empty), "volume storage mismatch");
+                    throw new RpcException(new Status(StatusCode.AlreadyExists, "volume storage mismatch"));
                 if (shared != foundVolume.Shared)
-                    throw new RpcException(new Status(StatusCode.AlreadyExists, string.Empty), "volume share mode mismatch");
+                    throw new RpcException(new Status(StatusCode.AlreadyExists, "volume share mode mismatch"));
 
                 volume = await _service.GetVolumeAsync(foundVolume.Path, context.CancellationToken);
             }
@@ -190,10 +187,10 @@ namespace HypervCsiDriver
             if (request.CapacityRange != null)
             {
                 if (request.CapacityRange.RequiredBytes > 0 && volume.SizeBytes < (ulong)request.CapacityRange.RequiredBytes)
-                    throw new RpcException(new Status(StatusCode.AlreadyExists, string.Empty), "volume too small");
+                    throw new RpcException(new Status(StatusCode.AlreadyExists, "volume too small"));
 
                 if (request.CapacityRange.LimitBytes > 0 && (ulong)request.CapacityRange.LimitBytes < volume.SizeBytes)
-                    throw new RpcException(new Status(StatusCode.AlreadyExists, string.Empty), "volume too large");
+                    throw new RpcException(new Status(StatusCode.AlreadyExists, "volume too large"));
             }
 
             var rsp = new CreateVolumeResponse
@@ -228,14 +225,14 @@ namespace HypervCsiDriver
                 .ToListAsync(context.CancellationToken);
 
             if (foundVolumes.Count > 1)
-                throw new RpcException(new Status(StatusCode.AlreadyExists, string.Empty), "volume id ambiguous");
+                throw new RpcException(new Status(StatusCode.AlreadyExists, "volume id ambiguous"));
 
             if (foundVolumes.Count == 1)
             {
                 var volume = await _service.GetVolumeAsync(foundVolumes[0].Path, context.CancellationToken);
 
                 if (volume.Attached)
-                    throw new RpcException(new Status(StatusCode.FailedPrecondition, string.Empty), "volume attached");
+                    throw new RpcException(new Status(StatusCode.FailedPrecondition, "volume attached"));
 
                 //todo snapshot/parent check
 
@@ -255,7 +252,7 @@ namespace HypervCsiDriver
             var shared = false;
 
             if (request.Readonly)
-                throw new RpcException(new Status(StatusCode.InvalidArgument, string.Empty), "readonly attach no supported");
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "readonly attach no supported"));
 
             switch (request.VolumeCapability.AccessMode.Mode)
             {
@@ -263,8 +260,7 @@ namespace HypervCsiDriver
                     shared = false;
                     break;
                 default:
-                    throw new RpcException(new Status(StatusCode.InvalidArgument, string.Empty),
-                        "not supported volume access mode");
+                    throw new RpcException(new Status(StatusCode.InvalidArgument, "not supported volume access mode"));
             }
 
             switch (request.VolumeCapability.AccessTypeCase)
@@ -280,8 +276,7 @@ namespace HypervCsiDriver
                     break;
                 //case VolumeCapability.AccessTypeOneofCase.None:
                 default:
-                    throw new RpcException(new Status(StatusCode.InvalidArgument, string.Empty),
-                        "unknown volume access type");
+                    throw new RpcException(new Status(StatusCode.InvalidArgument, "unknown volume access type"));
             }
 
             //request.VolumeId
@@ -295,8 +290,7 @@ namespace HypervCsiDriver
             .FirstOrDefaultAsync(context.CancellationToken);
 
             if (foundVolume is null)
-                throw new RpcException(new Status(StatusCode.NotFound, string.Empty),
-                    "volume not found");
+                throw new RpcException(new Status(StatusCode.NotFound, "volume not found"));
 
             var vmId = Guid.Parse(request.NodeId);
 
@@ -313,8 +307,7 @@ namespace HypervCsiDriver
             if (flow != null)
             {
                 if (!shared && flow.VMId != vmId)
-                    throw new RpcException(new Status(StatusCode.FailedPrecondition, string.Empty),
-                        $"volume published on node[{flow.VMId}]");
+                    throw new RpcException(new Status(StatusCode.FailedPrecondition, $"volume published on node[{flow.VMId}]"));
 
                 //todo check shared volume_capability         
 
@@ -330,8 +323,7 @@ namespace HypervCsiDriver
                 var volume = await _service.GetVolumeAsync(foundVolume.Path, null, context.CancellationToken);
 
                 if (shared != volume.Shared)
-                    throw new RpcException(new Status(StatusCode.InvalidArgument, string.Empty),
-                        "volume sharing ambiguous");
+                    throw new RpcException(new Status(StatusCode.InvalidArgument, "volume sharing ambiguous"));
 
                 //maybe check volume.Attached=false
 
@@ -342,8 +334,7 @@ namespace HypervCsiDriver
                 .FirstOrDefaultAsync(context.CancellationToken);
 
                 if (vm is null)
-                    throw new RpcException(new Status(StatusCode.NotFound, string.Empty),
-                        "node not found");
+                    throw new RpcException(new Status(StatusCode.NotFound, "node not found"));
 
                 vmVolume = await _service.AttachVolumeAsync(new HypervAttachVolumeRequest
                 {
@@ -383,8 +374,7 @@ namespace HypervCsiDriver
             .FirstOrDefaultAsync(context.CancellationToken);
 
             if (foundVolume is null)
-                throw new RpcException(new Status(StatusCode.NotFound, string.Empty),
-                    "volume not found");
+                throw new RpcException(new Status(StatusCode.NotFound, "volume not found"));
 
             var vmId = Guid.Parse(request.NodeId);
 
@@ -395,8 +385,7 @@ namespace HypervCsiDriver
             .FirstOrDefaultAsync(context.CancellationToken);
 
             if (vm is null)
-                throw new RpcException(new Status(StatusCode.NotFound, string.Empty),
-                    "node not found");
+                throw new RpcException(new Status(StatusCode.NotFound, "node not found"));
 
             //todo maybe vm is deleted, spec: SHOULD return OK
 
@@ -431,27 +420,26 @@ namespace HypervCsiDriver
             if (!string.IsNullOrEmpty(request.StartingToken))
             {
                 if (!int.TryParse(request.StartingToken, out startIndex))
-                    throw new RpcException(new Status(StatusCode.Aborted, string.Empty),
-                        "invalid starting_token");
+                    throw new RpcException(new Status(StatusCode.InvalidArgument, "invalid starting_token"));
             }
 
             var rsp = new ListVolumesResponse
-            {                
+            {
             };
 
-            if (request.MaxEntries > 0 && (volumes.Count-startIndex) > request.MaxEntries)
+            if (request.MaxEntries > 0 && (volumes.Count - startIndex) > request.MaxEntries)
                 rsp.NextToken = (startIndex + request.MaxEntries).ToString();
 
 
             var volumeSource = volumes.AsEnumerable();
 
-            if(startIndex > 0)
+            if (startIndex > 0)
                 volumeSource = volumeSource.Skip(startIndex);
 
             if (request.MaxEntries > 0)
                 volumeSource = volumeSource.Take(request.MaxEntries);
 
-            await foreach(var r in _service.GetVolumeDetailsAsync(volumeSource, context.CancellationToken))
+            await foreach (var r in _service.GetVolumeDetailsAsync(volumeSource, context.CancellationToken))
             {
                 var entry = new ListVolumesResponse.Types.Entry
                 {
@@ -466,7 +454,7 @@ namespace HypervCsiDriver
                     }
                 };
 
-                if(r.Detail is not null)
+                if (r.Detail is not null)
                 {
                     var d = r.Detail;
                     entry.Volume.CapacityBytes = (long)(d.SizeBytes);
@@ -480,10 +468,10 @@ namespace HypervCsiDriver
                     };
                 }
 
-                if(r.Nodes.Length > 0)
+                if (r.Nodes.Length > 0)
                     entry.Status.PublishedNodeIds.Add(r.Nodes);
 
-                if(r.Error is not null)
+                if (r.Error is not null)
                 {
                     entry.Status.VolumeCondition = new VolumeCondition
                     {
@@ -501,12 +489,12 @@ namespace HypervCsiDriver
         public override async Task<ControllerGetVolumeResponse> ControllerGetVolume(ControllerGetVolumeRequest request, ServerCallContext context)
         {
             var foundVolumes = await _service.GetVolumesAsync(new HypervVolumeFilter { Name = request.VolumeId }).ToListAsync(context.CancellationToken);
-            
+
             if (foundVolumes.Count == 0)
-                throw new RpcException(new Status(StatusCode.NotFound, string.Empty), "volume not found");
+                throw new RpcException(new Status(StatusCode.NotFound, "volume not found"));
             if (foundVolumes.Count > 1)
-                throw new RpcException(new Status(StatusCode.FailedPrecondition, string.Empty), "volume name ambiguous");
-           
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, "volume name ambiguous"));
+
             var r = await _service.GetVolumeDetailsAsync(foundVolumes)
                 .SingleAsync(context.CancellationToken);
 
@@ -577,6 +565,6 @@ namespace HypervCsiDriver
             return base.ListSnapshots(request, context);
         }
 
-        
+
     }
 }

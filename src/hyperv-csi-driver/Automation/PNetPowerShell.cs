@@ -7,6 +7,7 @@ using System.Management.Automation.Runspaces;
 using System.Reactive.Concurrency;
 using System.Reactive.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace PNet.Automation
 {
@@ -48,28 +49,19 @@ namespace PNet.Automation
 
             var conInfo = new SSHConnectionInfo(userName, hostName, keyFile);
 
-            _pool = new PNetRunspacePool(conInfo);
+            _pool = new PNetRunspacePool(conInfo);                        
         }
 
-        PNetRunspaceContainer GetRunspace()
+        async Task<PNetRunspaceContainer> GetRunspaceAsync(CancellationToken cancellationToken = default)
         {
-            //hack for remote connection
-            if (Runspace.DefaultRunspace == null)
-            {
-                var defaultRunspace = RunspaceFactory.CreateRunspace();
-                defaultRunspace.Open();
-
-                Runspace.DefaultRunspace = defaultRunspace;
-            }
-
-            var runspace = _pool.Rent();
+            var runspace = await _pool.RentAsync(cancellationToken);
 
             return new PNetRunspaceContainer(_pool, runspace);
         }
 
         public IObservable<T> Run<T>(Func<Runspace, IObservable<T>> func)
         {
-            return Observable.Using(GetRunspace, c => func(c.Runspace))
+            return Observable.Using(c => GetRunspaceAsync(c), (n, _) => Task.FromResult(func(n.Runspace)))
                 .SubscribeOn(Scheduler.Default); //todo work with context
         }
 
@@ -89,13 +81,17 @@ namespace PNet.Automation
     {
         readonly RunspaceConnectionInfo? _connectionInfo = null;
 
-        ImmutableList<Runspace> _runspaces = ImmutableList<Runspace>.Empty;
+        readonly SemaphoreSlim _lock = new SemaphoreSlim(1, 1);
 
-        int _instanceCount = 0;
+        readonly List<RunspaceEntry> _entries = new List<RunspaceEntry>(10);
 
-        public int MaxSize { get; set; } = 3;
+        TaskCompletionSource<RunspaceEntry> _tcs = null;
 
-        public int InstanceCount => Volatile.Read(ref _instanceCount);
+        public int MaxSize { get; set; } = 10;
+
+        public int MinSize { get; set; } = 0;
+
+        public int InstanceCount => _entries.Count;
 
         public PNetRunspacePool()
         {
@@ -106,132 +102,170 @@ namespace PNet.Automation
             _connectionInfo = connectionInfo;
         }
 
-        public Runspace Rent()
+        public async Task<Runspace> RentAsync(CancellationToken cancellationToken = default)
         {
             if (_disposed) throw new ObjectDisposedException(nameof(PNetRunspacePool));
 
-            Runspace? rs;
+            await _lock.WaitAsync(cancellationToken);
 
-            ImmutableList<Runspace> current;
-            ImmutableList<Runspace> result;
-            var builder = ImmutableList.CreateBuilder<Runspace>();
-            var removeCount = 0;
-
-            do
+            try
             {
-                current = _runspaces;
+                RunspaceEntry? entry;
 
-                //cleanup
-                builder.Clear();
-                removeCount = 0;
-
-                foreach (var r in current)
+                //clean up runspaces
+                for (int i = _entries.Count-1; i >= 0; i--)
                 {
-                    switch (r.RunspaceStateInfo.State, r.RunspaceAvailability)
+                    entry = _entries[i];
+                    if(!entry.Rented)
                     {
-                        case (RunspaceState.Opened, RunspaceAvailability.Available):
-                            builder.Add(r);
-                            break;
-                        //case RunspaceState.Closed: 
-                        //maybe reopen
-                        //break;
-                        default:
-                            try
-                            {
-                                removeCount++;
-                                r.Dispose();
-                            }
-                            catch
-                            {
-                                //ignore
-                            }
-                            break;
+                        switch (entry.Runspace.RunspaceStateInfo.State, entry.Runspace.RunspaceAvailability)
+                        {
+                            case (RunspaceState.BeforeOpen, _):
+                                break;
+                            case (RunspaceState.Opened, RunspaceAvailability.Available):
+                                break;
+                            default:
+                                _entries.RemoveAt(i);
+                                entry.Runspace.Dispose();                                
+                                break;
+                        }
                     }
                 }
 
-                rs = builder.FirstOrDefault();
+                entry = _entries.FirstOrDefault(n => !n.Rented);
 
-                if (rs is not null)
-                    builder.Remove(rs);
+                if(entry is null)
+                {
+                    if(_entries.Count >= MaxSize)
+                    {
+                        do
+                        {
+                            _tcs = new TaskCompletionSource<RunspaceEntry>();
 
-                result = builder.ToImmutable();
+                            _lock.Release();
+
+                            entry = await _tcs.Task;
+
+                            await _lock.WaitAsync(cancellationToken);
+                        }
+                        while (entry.Rented);
+                    }
+                    else
+                    {
+                        var rs = _connectionInfo != null
+                            ? RunspaceFactory.CreateRunspace(_connectionInfo)
+                            : RunspaceFactory.CreateRunspace();
+
+                        rs.ApartmentState = ApartmentState.MTA;
+
+                        entry = new RunspaceEntry
+                        {
+                            Runspace = rs
+                        };
+                        _entries.Add(entry);
+                    }                    
+                }
+
+                entry.Rented = true;
+                return entry.Runspace;
             }
-            while (Interlocked.Exchange(ref _runspaces, result) != current);
+            finally
+            {
+                _lock.Release();
+            }
+        }
 
-            Interlocked.Add(ref _instanceCount, -removeCount);
+        public async Task<bool> ReturnAsync(Runspace runspace, CancellationToken cancellationToken = default)
+        {
+            if (_disposed) return false;
 
-            rs ??= CreateRunspace();
+            await _lock.WaitAsync(cancellationToken);
 
-            return rs;
+            try
+            {
+                var entry = _entries.FirstOrDefault(n => n.Runspace == runspace);
+                
+                if (entry is null)
+                    return false;
+
+                switch (runspace.RunspaceStateInfo.State, runspace.RunspaceAvailability)
+                {
+                    case (RunspaceState.BeforeOpen, _):
+                        break;
+                    case (RunspaceState.Opened, RunspaceAvailability.Available):
+                        break;
+                    default:                        
+                        _entries.Remove(entry);
+                        return false;                        
+                }
+
+                try
+                {
+                    runspace.ResetRunspaceState();
+                }
+                catch
+                {
+                    //hacky
+                    _entries.Remove(entry);
+                    return false;
+                }
+
+                entry.Rented = false;
+                _tcs?.TrySetResult(entry);
+                return true;
+            } 
+            finally
+            {
+                _lock.Release();
+            }
         }
 
         public bool Return(Runspace runspace)
         {
-            if (_disposed)
-            {
-                Interlocked.Decrement(ref _instanceCount);
-                return false;
-            }
+            if (_disposed) return false;
 
-            switch (runspace.RunspaceStateInfo.State, runspace.RunspaceAvailability)
-            {
-                //case (RunspaceState.BeforeOpen, _):
-                //    break;
-                case (RunspaceState.Opened, RunspaceAvailability.Available):
-                    break;
-                default:
-                    Interlocked.Decrement(ref _instanceCount);
-                    return false;
-            }
+            var result = _lock.Wait(3000);
+
+            if (!result)
+                return false;
 
             try
             {
-                runspace.ResetRunspaceState();
-            }
-            catch
-            {
-                //hack racy 
-                Interlocked.Decrement(ref _instanceCount);
-                return false;
-            }
+                var entry = _entries.FirstOrDefault(n => n.Runspace == runspace);
 
-            ImmutableList<Runspace> current;
-            ImmutableList<Runspace> result;
-            do
-            {
-                current = _runspaces;
+                if (entry is null)
+                    return false;
 
-                if (current.Contains(runspace))
-                    break;
-
-                if (current.Count >= MaxSize)
+                switch (runspace.RunspaceStateInfo.State, runspace.RunspaceAvailability)
                 {
-                    Interlocked.Decrement(ref _instanceCount);
+                    case (RunspaceState.BeforeOpen, _):
+                        break;
+                    case (RunspaceState.Opened, RunspaceAvailability.Available):
+                        break;
+                    default:
+                        _entries.Remove(entry);
+                        return false;
+                }
+
+                try
+                {
+                    runspace.ResetRunspaceState();
+                }
+                catch
+                {
+                    //hacky
+                    _entries.Remove(entry);
                     return false;
                 }
 
-                result = current.Add(runspace);
+                entry.Rented = false;
+                _tcs?.TrySetResult(entry);
+                return true;
             }
-            while (Interlocked.Exchange(ref _runspaces, result) != current);
-
-            return true;
-        }
-
-        Runspace CreateRunspace()
-        {
-            var runspace = _connectionInfo != null
-                ? RunspaceFactory.CreateRunspace(_connectionInfo)
-                : RunspaceFactory.CreateRunspace();
-
-            runspace.ApartmentState = ApartmentState.MTA;
-
-            //runspace.ThreadOptions = PSThreadOptions.ReuseThread;
-
-            //runspace.OpenAsync();
-
-            Interlocked.Increment(ref _instanceCount);
-
-            return runspace;
+            finally
+            {
+                _lock.Release();
+            }
         }
 
         bool _disposed = false;
@@ -240,19 +274,23 @@ namespace PNet.Automation
             if (_disposed)
                 return;
 
-            var current = _runspaces;
-            _runspaces = ImmutableList<Runspace>.Empty;
-            foreach (var rs in current)
-            {
-                rs.Dispose();
-                _instanceCount--;
-            }
-
             _disposed = true;
+
+            foreach (var entry in _entries)
+                entry.Runspace.Dispose();
+
+            _entries.Clear();
+        }
+
+        sealed class RunspaceEntry
+        {
+            public Runspace Runspace { get; init; }
+
+            public bool Rented { get; set; }
         }
     }
 
-    sealed class PNetRunspaceContainer : IDisposable
+    sealed class PNetRunspaceContainer : IAsyncDisposable, IDisposable
     {
         Runspace? _runspace;
 
@@ -267,16 +305,37 @@ namespace PNet.Automation
         }
 
         bool _disposed;
-        public void Dispose()
+
+        public async ValueTask DisposeAsync()
         {
-            if (_disposed) return;
+            if (_disposed)
+                return;
 
             var rs = _runspace;
             _runspace = null;
-            if (rs is not null && !Pool.Return(rs))
-            {
-                rs.Dispose();
-            }
+
+            if (rs is null)
+                return;
+
+            var r = await Pool.ReturnAsync(rs);
+            if (!r) rs.Dispose();
+
+            _disposed = true;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+
+            var rs = _runspace;
+            _runspace = null;
+
+            if (rs is null)
+                return;
+
+            var r = Pool.Return(rs);
+            if (!r) rs.Dispose();
 
             _disposed = true;
         }

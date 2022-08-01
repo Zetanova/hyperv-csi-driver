@@ -445,7 +445,7 @@ namespace HypervCsiDriver
                             .DefaultIfEmpty(null);
 
                 var errors = new List<Exception>();
-                HypervVolumeDetail v = null;
+                HypervVolumeDetail? v = null;
 
                 foreach (var hostName in hostNames)
                 {

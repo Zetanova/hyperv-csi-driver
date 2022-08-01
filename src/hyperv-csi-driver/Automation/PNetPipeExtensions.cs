@@ -34,6 +34,8 @@ namespace PNet.Automation
 
         public static IObservable<PSObject> ToObservable(this Pipeline pipe, IObservable<object> input)
         {
+            Runspace? defaultRunspace = null;
+
             var pipeStateSource = Observable.FromEventPattern<PipelineStateEventArgs>(
                     a => pipe.StateChanged += a,
                     a => pipe.StateChanged -= a)
@@ -56,71 +58,81 @@ namespace PNet.Automation
                    runspaceStateSource.StartWith(pipe.Runspace.RunspaceStateInfo),
                    runspaceAvailabilitySource.StartWith(pipe.Runspace.RunspaceAvailability),
                     (pa, rs, ra) => (rs, ra, pipe: pa.Pipe, ps: pa.State))
-                   .Subscribe(
-                       onNext: n =>
-                       {
-                           //Debug.WriteLine($"Control: Thread[{Thread.CurrentThread.ManagedThreadId}], {n.rs.State}, {n.ra}, {n.ps.State}");
-
-                           switch (n.rs.State)
-                           {
-                               case RunspaceState.BeforeOpen:
-                                   if (n.ra == RunspaceAvailability.None)
-                                       n.pipe.Runspace.OpenAsync();
-                                   break;
-                               case RunspaceState.Opening:
-                                   break;
-                               case RunspaceState.Opened:
-                                   if (n.ra == RunspaceAvailability.Available)
-                                   {
-                                       switch (n.ps.State)
-                                       {
-                                           case PipelineState.NotStarted:
-                                               if (n.pipe.PipelineStateInfo.State == PipelineState.NotStarted
-                                                   && n.pipe.Runspace.RunspaceAvailability == RunspaceAvailability.Available)
-                                                   n.pipe.InvokeAsync();
-                                               break;
-                                           case PipelineState.Running:
-                                               break;
-                                           case PipelineState.Stopped:
-                                               o.OnCompleted();
-                                               break;
-                                           case PipelineState.Completed:
-                                               if (n.pipe.HadErrors && !n.pipe.Error.EndOfPipeline)
-                                               {
-                                                   //workaround to signal errors after closed readers
-                                                   o.OnNext(new PSObject(new ErrorRecord(new Exception("dirty-pipe"), "pipe_completed", ErrorCategory.FromStdErr, null)));
-                                               }
-                                               o.OnCompleted();
-                                               break;
-                                           case PipelineState.Failed:
-                                               o.OnError(n.ps.Reason);
-                                               break;
-                                           case PipelineState.Disconnected:
-                                               o.OnError(n.ps.Reason); //maybe suppress call
-                                               break;
-                                       }
-                                   }
-                                   break;
-                               case RunspaceState.Connecting:
-                               case RunspaceState.Disconnecting:
-                                   break;
-                               case RunspaceState.Disconnected:
-                                   o.OnError(n.rs.Reason);
-                                   break;
-                               case RunspaceState.Closing:
-                                   break;
-                               case RunspaceState.Closed:
-                                   o.OnCompleted();
-                                   break;
-                               case RunspaceState.Broken:
-                                   o.OnError(n.rs.Reason);
-                                   break;
-                               default:
-                                   break;
-                           }
-                       }
-                   )
+                   .Subscribe(onNext: n => OnNextPipeControl(o, n))
                );
+
+            void OnNextPipeControl(IObserver<PSObject> o, (RunspaceStateInfo rs, RunspaceAvailability ra, Pipeline pipe, PipelineStateInfo ps) n)
+            {
+                //Debug.WriteLine($"Control: Thread[{Thread.CurrentThread.ManagedThreadId}], {n.rs.State}, {n.ra}, {n.ps.State}");
+
+                switch (n.rs.State)
+                {
+                    case RunspaceState.BeforeOpen:
+                        if (n.ra == RunspaceAvailability.None)
+                        {
+                            if(n.pipe.Runspace.RunspaceIsRemote)
+                            {
+                                //maybe only required if a ssh-keyfile is used
+                                defaultRunspace = RunspaceFactory.CreateRunspace();
+                                defaultRunspace.Open();
+                                Runspace.DefaultRunspace = defaultRunspace;
+                            }
+                            n.pipe.Runspace.OpenAsync();
+                        }
+                        break;
+                    case RunspaceState.Opening:
+                        break;
+                    case RunspaceState.Opened:
+                        if (n.ra == RunspaceAvailability.Available)
+                        {
+                            switch (n.ps.State)
+                            {
+                                case PipelineState.NotStarted:
+                                    if (n.pipe.PipelineStateInfo.State == PipelineState.NotStarted
+                                        && n.pipe.Runspace.RunspaceAvailability == RunspaceAvailability.Available)
+                                        n.pipe.InvokeAsync();
+                                    break;
+                                case PipelineState.Running:
+                                    break;
+                                case PipelineState.Stopped:
+                                    o.OnCompleted();
+                                    break;
+                                case PipelineState.Completed:
+                                    if (n.pipe.HadErrors && !n.pipe.Error.EndOfPipeline)
+                                    {
+                                        //workaround to signal errors after closed readers
+                                        o.OnNext(new PSObject(new ErrorRecord(new Exception("dirty-pipe"), "pipe_completed", ErrorCategory.FromStdErr, null)));
+                                    }
+                                    o.OnCompleted();
+                                    break;
+                                case PipelineState.Failed:
+                                    o.OnError(n.ps.Reason);
+                                    break;
+                                case PipelineState.Disconnected:
+                                    o.OnError(n.ps.Reason); //maybe suppress call
+                                    break;
+                            }
+                        }
+                        break;
+                    case RunspaceState.Connecting:
+                    case RunspaceState.Disconnecting:
+                        break;
+                    case RunspaceState.Disconnected:
+                        o.OnError(n.rs.Reason);
+                        break;
+                    case RunspaceState.Closing:
+                        break;
+                    case RunspaceState.Closed:
+                        o.OnCompleted();
+                        break;
+                    case RunspaceState.Broken:
+                        o.OnError(n.rs.Reason);
+                        break;
+                    default:
+                        break;
+                }
+
+            }
 
             var errorSource = pipe.Error.ToObservable()
                 .Materialize()
@@ -169,6 +181,8 @@ namespace PNet.Automation
                             //ignore
                         }
                     }
+
+                    defaultRunspace?.Dispose();
 
                     //Debug.WriteLine("pipe invoke disposed");
                 }));

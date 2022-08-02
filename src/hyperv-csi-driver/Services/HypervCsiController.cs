@@ -435,9 +435,6 @@ namespace HypervCsiDriver
             //todo cache query
             var volumes = await _service.GetVolumesAsync(null).ToListAsync(context.CancellationToken);
 
-            var flows = await _service.GetVolumeFlowsAsnyc(null)
-                .ToListAsync(context.CancellationToken);
-
             var startIndex = 0;
             if (!string.IsNullOrEmpty(request.StartingToken))
             {

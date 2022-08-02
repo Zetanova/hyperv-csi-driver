@@ -27,6 +27,8 @@ namespace HypervCsiDriver
 
         public override Task<ControllerGetCapabilitiesResponse> ControllerGetCapabilities(ControllerGetCapabilitiesRequest request, ServerCallContext context)
         {
+            _logger.LogDebug("get controller capabilities");
+
             var rsp = new ControllerGetCapabilitiesResponse
             {
             };
@@ -152,6 +154,8 @@ namespace HypervCsiDriver
                 }
             }
 
+            _logger.LogInformation("create volume {VolumeName} on '{StorageName}' with size {VoumeSizeBytes}", name, storage, sizeBytes);
+
             //todo request.AccessibilityRequirements
             //todo request.VolumeContentSource
 
@@ -221,6 +225,8 @@ namespace HypervCsiDriver
             if (volumeName.StartsWith("C:\\"))
                 volumeName = HypervUtils.GetFileNameWithoutExtension(volumeName);
 
+            _logger.LogInformation("delete volume {VolumeName}", volumeName);
+
             var foundVolumes = await _service.GetVolumesAsync(new HypervVolumeFilter { Name = volumeName })
                 .ToListAsync(context.CancellationToken);
 
@@ -279,8 +285,13 @@ namespace HypervCsiDriver
                     throw new RpcException(new Status(StatusCode.InvalidArgument, "unknown volume access type"));
             }
 
-            //request.VolumeId
-            //request.VolumeContext
+            var volumeName = request.VolumeId;
+            var storage = request.VolumeContext["Storage"] ?? string.Empty;
+
+            if (!Guid.TryParse(request.NodeId, out var vmId))
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "node id invalid"));
+
+            _logger.LogInformation("publich volume {VolumeName} on storage {StorageName} to node {VMId}", volumeName, storage, vmId);
 
             var foundVolumes = await _service.GetVolumesAsync(new HypervVolumeFilter
             {
@@ -296,9 +307,6 @@ namespace HypervCsiDriver
 
             var foundVolume = foundVolumes[0];
 
-            if (!Guid.TryParse(request.NodeId, out var vmId))
-                throw new RpcException(new Status(StatusCode.InvalidArgument, "node id invalid"));
-
             //var volumePath = request.VolumeContext["Path"];
 
             HypervVirtualMachineVolumeInfo vmVolume;
@@ -311,6 +319,8 @@ namespace HypervCsiDriver
 
             if (flow != null)
             {
+                _logger.LogDebug("volume {VolumeName} already attached to node {VMId}", flow.Path, vmId);
+
                 if (!shared && flow.VMId != vmId)
                     throw new RpcException(new Status(StatusCode.FailedPrecondition, $"volume published on node[{flow.VMId}]"));
 
@@ -325,6 +335,8 @@ namespace HypervCsiDriver
             }
             else
             {
+                _logger.LogDebug("attaching volume {VolumePath} to node {VMId}", foundVolume.Path, vmId);
+
                 var volume = await _service.GetVolumeAsync(foundVolume.Path, null, context.CancellationToken);
 
                 if (shared != volume.Shared)
@@ -372,6 +384,11 @@ namespace HypervCsiDriver
             if (volumeName.StartsWith("C:\\"))
                 volumeName = HypervUtils.GetFileNameWithoutExtension(volumeName);
 
+            if (!Guid.TryParse(request.NodeId, out var vmId))
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "node id invalid"));
+
+            _logger.LogInformation("unpublish volume {VolumeName} from node {VMId}", volumeName, vmId);
+
             var foundVolume = await _service.GetVolumesAsync(new HypervVolumeFilter
             {
                 Name = volumeName
@@ -380,8 +397,6 @@ namespace HypervCsiDriver
 
             if (foundVolume is null)
                 throw new RpcException(new Status(StatusCode.NotFound, "volume not found"));
-
-            var vmId = Guid.Parse(request.NodeId);
 
             var vm = await _service.GetVirtualMachinesAsync(new HypervVirtualMachineFilter
             {
@@ -415,6 +430,8 @@ namespace HypervCsiDriver
 
         public override async Task<ListVolumesResponse> ListVolumes(ListVolumesRequest request, ServerCallContext context)
         {
+            _logger.LogDebug("list volumes from index {StartIndex}", request.StartingToken);
+
             //todo cache query
             var volumes = await _service.GetVolumesAsync(null).ToListAsync(context.CancellationToken);
 
@@ -434,7 +451,6 @@ namespace HypervCsiDriver
 
             if (request.MaxEntries > 0 && (volumes.Count - startIndex) > request.MaxEntries)
                 rsp.NextToken = (startIndex + request.MaxEntries).ToString();
-
 
             var volumeSource = volumes.AsEnumerable();
 
@@ -493,6 +509,8 @@ namespace HypervCsiDriver
 
         public override async Task<ControllerGetVolumeResponse> ControllerGetVolume(ControllerGetVolumeRequest request, ServerCallContext context)
         {
+            _logger.LogDebug("get volume {VolumeName}", request.VolumeId);
+
             var foundVolumes = await _service.GetVolumesAsync(new HypervVolumeFilter { Name = request.VolumeId }).ToListAsync(context.CancellationToken);
 
             if (foundVolumes.Count == 0)

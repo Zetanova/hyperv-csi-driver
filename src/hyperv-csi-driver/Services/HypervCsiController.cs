@@ -282,17 +282,22 @@ namespace HypervCsiDriver
             //request.VolumeId
             //request.VolumeContext
 
-            var foundVolume = await _service.GetVolumesAsync(new HypervVolumeFilter
+            var foundVolumes = await _service.GetVolumesAsync(new HypervVolumeFilter
             {
                 Name = request.VolumeId,
                 Storage = request.VolumeContext["Storage"]
             })
-            .FirstOrDefaultAsync(context.CancellationToken);
+            .ToListAsync(context.CancellationToken);
 
-            if (foundVolume is null)
+            if (foundVolumes.Count == 0)
                 throw new RpcException(new Status(StatusCode.NotFound, "volume not found"));
+            if (foundVolumes.Count > 1)
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, "volume id ambiguous"));
 
-            var vmId = Guid.Parse(request.NodeId);
+            var foundVolume = foundVolumes[0];
+
+            if (!Guid.TryParse(request.NodeId, out var vmId))
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "node id invalid"));
 
             //var volumePath = request.VolumeContext["Path"];
 

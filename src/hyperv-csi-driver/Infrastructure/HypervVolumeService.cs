@@ -127,7 +127,9 @@ namespace HypervCsiDriver.Infrastructure
 
                 foreach (var h in hostNames)
                 {
-                    await foreach (var vm in GetHost(h).GetVirtualMachinesAsync(filter).WithCancellation(cancellationToken))
+                    var vmSource = GetHost(h).GetVirtualMachinesAsync(filter);
+
+                    await foreach (var vm in vmSource.WithCancellation(cancellationToken))
                         yield return vm;
                 }
             }

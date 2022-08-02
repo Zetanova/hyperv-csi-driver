@@ -342,26 +342,33 @@ namespace HypervCsiDriver.Infrastructure
             //todo ParentPath, FragmentationPercentage, VHDFormat
             commands.Add(cmd);
 
-            dynamic item = await _power.InvokeAsync(commands).ThrowOnError()
-                .FirstAsync(cancellationToken);
-
-            return new HypervVolumeDetail
+            try
             {
-                Id = Guid.Parse((string)item.DiskIdentifier),
-                Name = HypervUtils.GetFileNameWithoutExtension((string)item.Path),
-                Path = item.Path,
-                FileSizeBytes = item.FileSize,
-                SizeBytes = item.Size,
-                Attached = item.Attached,
-                BlockSizeBytes = item.BlockSize,
-                Dynamic = item.VhdType switch
+                dynamic item = await _power.InvokeAsync(commands).ThrowOnError()
+                                .FirstAsync(cancellationToken);
+
+                return new HypervVolumeDetail
                 {
-                    "Dynamic" => true,
-                    _ => false
-                },
-                Storage = HypervUtils.GetStorageNameFromPath((string)item.Path),
-                Shared = false //todo .vhds                    
-            };
+                    Id = Guid.Parse((string)item.DiskIdentifier),
+                    Name = HypervUtils.GetFileNameWithoutExtension((string)item.Path),
+                    Path = item.Path,
+                    FileSizeBytes = item.FileSize,
+                    SizeBytes = item.Size,
+                    Attached = item.Attached,
+                    BlockSizeBytes = item.BlockSize,
+                    Dynamic = item.VhdType switch
+                    {
+                        "Dynamic" => true,
+                        _ => false
+                    },
+                    Storage = HypervUtils.GetStorageNameFromPath((string)item.Path),
+                    Shared = false //todo .vhds                    
+                };
+            } 
+            catch(Exception ex)
+            {
+                throw;
+            }            
         }
 
         public IAsyncEnumerable<HypervVolumeInfo> GetVolumesAsync(HypervVolumeFilter filter = null)
@@ -415,6 +422,7 @@ namespace HypervCsiDriver.Infrastructure
                 cmd.Parameters.Add("Id", filter.Id);
             if (!string.IsNullOrEmpty(filter?.Name))
                 cmd.Parameters.Add("Name", filter.Name);
+            cmd.Parameters.Add("ErrorAction", "SilentlyContinue");
             commands.Add(cmd);
 
             cmd = new Command("Select-Object");

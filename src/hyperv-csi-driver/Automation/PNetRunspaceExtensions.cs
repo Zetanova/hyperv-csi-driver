@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Management.Automation;
 using System.Management.Automation.Runspaces;
+using System.Reactive.Concurrency;
 using System.Reactive.Linq;
 using System.Runtime.ExceptionServices;
 

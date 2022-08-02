@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Management.Automation;
 using System.Management.Automation.Internal;
 using System.Management.Automation.Runspaces;
@@ -27,14 +28,11 @@ namespace PNet.Automation
             }
         }
 
-        public static IObservable<PSObject> ToObservable(this Pipeline pipe)
-        {
-            return pipe.ToObservable(Observable.Empty<object>());
-        }
-
-        public static IObservable<PSObject> ToObservable(this Pipeline pipe, IObservable<object> input)
+        public static IObservable<PSObject> ToObservable(this Pipeline pipe, IObservable<object>? input = null)
         {
             Runspace? defaultRunspace = null;
+
+            var runspace = pipe.Runspace;
 
             var pipeStateSource = Observable.FromEventPattern<PipelineStateEventArgs>(
                     a => pipe.StateChanged += a,
@@ -42,20 +40,20 @@ namespace PNet.Automation
                     .Select(n => (Pipe: (Pipeline)n.Sender!, State: n.EventArgs.PipelineStateInfo));
 
             var runspaceStateSource = Observable.FromEventPattern<RunspaceStateEventArgs>(
-                   a => pipe.Runspace.StateChanged += a,
-                   a => pipe.Runspace.StateChanged -= a)
+                   a => runspace.StateChanged += a,
+                   a => runspace.StateChanged -= a)
                    .Select(n => n.EventArgs.RunspaceStateInfo);
 
             var runspaceAvailabilitySource = Observable.FromEventPattern<RunspaceAvailabilityEventArgs>(
-                   a => pipe.Runspace.AvailabilityChanged += a,
-                   a => pipe.Runspace.AvailabilityChanged -= a)
+                   a => runspace.AvailabilityChanged += a,
+                   a => runspace.AvailabilityChanged -= a)
                    .Select(n => n.EventArgs.RunspaceAvailability);
 
             var pipeControlSource = Observable.Create<PSObject>(o =>
                Observable.CombineLatest(
                    pipeStateSource.StartWith((Pipe: pipe, State: pipe.PipelineStateInfo)),
-                   runspaceStateSource.StartWith(pipe.Runspace.RunspaceStateInfo),
-                   runspaceAvailabilitySource.StartWith(pipe.Runspace.RunspaceAvailability),
+                   runspaceStateSource.StartWith(runspace.RunspaceStateInfo),
+                   runspaceAvailabilitySource.StartWith(runspace.RunspaceAvailability),
                     (pa, rs, ra) => (rs, ra, pipe: pa.Pipe, ps: pa.State))
                    .Subscribe(onNext: n => OnNextPipeControl(o, n))
                );
@@ -89,26 +87,33 @@ namespace PNet.Automation
                                 case PipelineState.NotStarted:
                                     if (n.pipe.PipelineStateInfo.State == PipelineState.NotStarted
                                         && n.pipe.Runspace.RunspaceAvailability == RunspaceAvailability.Available)
+                                    {
+                                        //Debug.WriteLine($"Pipe[{n.pipe.InstanceId}]: starting");
                                         n.pipe.InvokeAsync();
+                                        //Debug.WriteLine($"Pipe[{n.pipe.InstanceId}]: started");
+
+                                        //o.OnNext(n.pipe.PipelineStateInfo);
+                                    }
                                     break;
-                                case PipelineState.Running:
-                                    break;
-                                case PipelineState.Stopping:
-                                    break;
+                                //case PipelineState.Running:
+                                //    Debug.WriteLine($"Pipe[{n.pipe.InstanceId}]: fake running");
+                                //    break;
+                                //case PipelineState.Stopping:
+                                //    break;
                                 case PipelineState.Stopped:
                                     o.OnCompleted();
                                     break;
                                 case PipelineState.Completed:
-                                    if (n.pipe.HadErrors && !n.pipe.Error.EndOfPipeline)
-                                    {
-                                        //workaround to signal errors after closed readers
-                                        o.OnNext(new PSObject(new ErrorRecord(new Exception("dirty-pipe"), "pipe_completed", ErrorCategory.FromStdErr, null)));
-                                    }
-                                    if (!n.pipe.Output.EndOfPipeline)
-                                    {
-                                        //workaround to signal unread items
-                                        o.OnNext(new PSObject(new ErrorRecord(new Exception("clogged-pipe"), "pipe_completed", ErrorCategory.OperationStopped, null)));
-                                    }
+                                    //if (n.pipe.HadErrors && !n.pipe.Error.EndOfPipeline)
+                                    //{
+                                    //    //workaround to signal errors after closed readers
+                                    //    o.OnNext(new PSObject(new ErrorRecord(new Exception("dirty-pipe"), "pipe_completed", ErrorCategory.FromStdErr, null)));
+                                    //}
+                                    //if (!n.pipe.Output.EndOfPipeline)
+                                    //{
+                                    //    //workaround to signal unread items
+                                    //    o.OnNext(new PSObject(new ErrorRecord(new Exception("clogged-pipe"), "pipe_completed", ErrorCategory.OperationStopped, null)));
+                                    //}
                                     o.OnCompleted();
                                     break;
                                 case PipelineState.Failed:
@@ -116,6 +121,19 @@ namespace PNet.Automation
                                     break;
                                 case PipelineState.Disconnected:
                                     o.OnError(n.ps.Reason); //maybe suppress call
+                                    break;
+                            }
+                        }
+                        else if (n.ra == RunspaceAvailability.Busy)
+                        {
+                            switch (n.ps.State)
+                            {
+                                case PipelineState.Running:
+                                    //Debug.WriteLine($"Pipe[{n.pipe.InstanceId}]: running");
+                                    //o.OnNext(n.ps);
+                                    break;
+                                case PipelineState.Stopping:
+                                    //Debug.WriteLine($"Pipe[{n.pipe.InstanceId}]: stopping");
                                     break;
                             }
                         }
@@ -137,7 +155,6 @@ namespace PNet.Automation
                     default:
                         break;
                 }
-
             }
 
             var errorSource = pipe.Error.ToObservable()
@@ -156,36 +173,57 @@ namespace PNet.Automation
                 .Dematerialize()
                 .OfType<PSObject>();
 
-            var pipeSource = Observable.Merge(errorSource, pipe.Output.ToObservable(), Scheduler.CurrentThread);
+            var pipeSource = Observable.Merge(pipe.Output.ToObservable(), errorSource, Scheduler.CurrentThread);
 
             return Observable.Create<PSObject>(o =>
             {
-                var s0 = input
-                    .SubscribeOn(Scheduler.Default)
-                    .Subscribe(
-                        onNext: n => pipe.Input.Write(n),
-                        onCompleted: pipe.Input.Close,
-                        onError: ex => pipe.Input.Close()
-                    );
+                Debug.WriteLine($"Pipe[{pipe.InstanceId}]: {string.Join(" | ", pipe.Commands.Select(n => n.ToString()))}");
 
-                var s1 = Observable.Merge(Scheduler.CurrentThread, pipeControlSource, pipeSource)
+                var s0 = Disposable.Empty;
+                if (input is not null)
+                {
+                    s0 = input.Do(n => pipe.Input.Write(n))
+                        .Finally(() => pipe.Input.Close())
+                        .Subscribe();
+                }
+                else
+                {
+                    //if (pipe.Commands.Count > 1)
+                    //    pipe.Input.Write(AutomationNull.Value);
+
+                    //Debug.WriteLine($"Pipe[{pipe.InstanceId}]: input closed");
+                    pipe.Input.Close();
+                }
+
+                var s1 = Observable.Merge(pipeSource, pipeControlSource, Scheduler.CurrentThread)
+                    //.Finally(() => Debug.WriteLine($"Pipe[{pipe.InstanceId}]: completed in state '{pipe.PipelineStateInfo.State}'"))
                     .Subscribe(o);
 
                 return new CompositeDisposable(s0, s1, Disposable.Create(() =>
                 {
                     if (pipe.Input.IsOpen)
+                    {
+                        //Debug.WriteLine($"Pipe[{pipe.InstanceId}]: input closed");
                         pipe.Input.Close();
+                    }
 
                     if (pipe.PipelineStateInfo.State == PipelineState.Running)
                     {
+                        Debug.WriteLineIf(!pipe.Output.EndOfPipeline, $"Pipe[{pipe.InstanceId}]: output not complete: {pipe.Output.Count} count");
+
                         try
                         {
-                            pipe.StopAsync();
+                            pipe.Stop();
                         }
                         catch (PSObjectDisposedException)
                         {
                             //ignore
+                            //Debug.WriteLine($"Pipe[{pipe.InstanceId}]: stop error");
                         }
+                    }
+                    else
+                    {
+                        //Debug.WriteLine($"Pipe[{pipe.InstanceId}]: unsubscribed");
                     }
 
                     defaultRunspace?.Dispose();

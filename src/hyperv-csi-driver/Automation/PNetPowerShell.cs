@@ -156,7 +156,7 @@ namespace PNet.Automation
                             ? RunspaceFactory.CreateRunspace(_connectionInfo)
                             : RunspaceFactory.CreateRunspace();
 
-                        rs.ApartmentState = ApartmentState.MTA;
+                        //rs.ApartmentState = ApartmentState.MTA;
 
                         entry = new RunspaceEntry
                         {
@@ -396,7 +396,7 @@ namespace PNet.Automation
 
         public static IAsyncEnumerable<PSObject> InvokeAsync(this IPNetPowerShell power, IEnumerable<Command> commands)
         {
-            return power.Run(r => r.InvokeAsync(commands), power.Options.DefaultTimeout).ToAsyncEnumerable(); ;
+            return power.Run(r => r.InvokeAsync(commands), power.Options.DefaultTimeout).ToAsyncEnumerable();
         }
     }
 }

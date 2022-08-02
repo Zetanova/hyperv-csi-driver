@@ -103,7 +103,7 @@ namespace HypervCsiDriver.Infrastructure
         public async Task MountDeviceAsync(HypervNodeMountRequest request, CancellationToken cancellationToken = default)
         {
             using var scope = _logger.BeginScope("mounting {VolumeName}", request.Name);
-
+            
             Command cmd;
             var commands = new List<Command>(4);
 

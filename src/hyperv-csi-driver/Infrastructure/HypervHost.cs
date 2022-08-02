@@ -1,4 +1,7 @@
 ﻿using HypervCsiDriver.Utils;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using PNet.Automation;
 using System;
 using System.Collections.Generic;
@@ -198,24 +201,44 @@ namespace HypervCsiDriver.Infrastructure
         public string VolumePath { get; set; }
     }
 
+    public sealed class HyperVHostOptions
+    {
+        public string HostName { get; set; }
+        
+        public string UserName { get; set; }
+
+        public string KeyFile { get; set; }
+
+        public string DefaultStorage { get; set; } = string.Empty;
+    }
+
     public sealed class HypervHost : IHypervHost, IDisposable
     {
         readonly PNetPowerShell _power;
 
         readonly string _hostName;
 
-        public string DefaultStorage { get; set; } = string.Empty;
+        readonly ILogger _logger;
 
-        public HypervHost(string hostName, string userName, string? keyFile = null)
+        readonly string _defaultStorage;
+
+        public HypervHost(IOptions<HyperVHostOptions> options, ILogger<HypervHost>? logger)
         {
-            _power = new PNetPowerShell(hostName, userName, keyFile);
-            _hostName = hostName;
+            var opt = options.Value;
+
+            _power = new PNetPowerShell(opt.HostName, opt.UserName, opt.KeyFile);
+            _hostName = opt.HostName;
+            _defaultStorage = opt.DefaultStorage;
+
+            _logger = logger ?? (ILogger)NullLogger.Instance;
         }
 
         public async Task<HypervVolumeDetail> CreateVolumeAsync(HypervCreateVolumeRequest request, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrEmpty(request.Name))
                 throw new ArgumentNullException(nameof(request.Name));
+
+            using var scope = _logger.BeginScope("create volume {VolumeName} on {HostName}", request.Name, _hostName);
 
             //todo VHDSet switch
             if (request.Shared)
@@ -236,7 +259,7 @@ namespace HypervCsiDriver.Infrastructure
 
             //use default storage
             if (string.IsNullOrEmpty(storage))
-                storage = DefaultStorage;
+                storage = _defaultStorage;
 
             //storage required
             if (string.IsNullOrEmpty(storage))
@@ -251,6 +274,8 @@ namespace HypervCsiDriver.Infrastructure
 
             Command cmd;
             var commands = new List<Command>(2);
+
+            _logger.LogInformation("creating volume '{VolumePath}' with size {VolumeSizeBytes}", path, sizeBytes);
 
             cmd = new Command("New-VHD");
             cmd.Parameters.Add("Path", path);
@@ -296,10 +321,14 @@ namespace HypervCsiDriver.Infrastructure
             if (string.IsNullOrEmpty(request.Path))
                 throw new ArgumentNullException(nameof(request.Path));
 
+            using var scope = _logger.BeginScope("delete volume {VolumePath} on {HostName}", request.Path, _hostName);
+
             //maybe check path in storage 
 
             Command cmd;
             var commands = new List<Command>(3);
+
+            _logger.LogInformation("deleting volume '{VolumePath}'", request.Path);
 
             //todo VHDSet switch
             //todo Snapshots check
@@ -326,10 +355,14 @@ namespace HypervCsiDriver.Infrastructure
             if (string.IsNullOrEmpty(path))
                 throw new ArgumentNullException(nameof(path));
 
+            using var scope = _logger.BeginScope("get volume {VolumePath} on {HostName}", path, _hostName);
+
             //maybe check path in storage 
 
             Command cmd;
             var commands = new List<Command>(2);
+
+            _logger.LogDebug("get volume '{VolumePath}'", path);
 
             //todo VHDSet switch
 
@@ -373,8 +406,12 @@ namespace HypervCsiDriver.Infrastructure
 
         public IAsyncEnumerable<HypervVolumeInfo> GetVolumesAsync(HypervVolumeFilter filter = null)
         {
+            using var scope = _logger.BeginScope("get volumes on {HostName}", _hostName);
+
             Command cmd;
             var commands = new List<Command>(5);
+
+            _logger.LogDebug("get volumes");
 
             cmd = new Command("Get-ChildItem");
             cmd.Parameters.Add("Path", HypervDefaults.ClusterStoragePath);
@@ -414,8 +451,12 @@ namespace HypervCsiDriver.Infrastructure
 
         public IAsyncEnumerable<HypervVirtualMachineInfo> GetVirtualMachinesAsync(HypervVirtualMachineFilter filter)
         {
+            using var scope = _logger.BeginScope("get virtual machines on {HostName}", _hostName);
+
             Command cmd;
             var commands = new List<Command>(2);
+
+            _logger.LogDebug("get virtual machine");
 
             cmd = new Command("Get-VM");
             if (filter?.Id != Guid.Empty)
@@ -447,10 +488,14 @@ namespace HypervCsiDriver.Infrastructure
             if (!string.IsNullOrEmpty(request.Host) && !StringComparer.OrdinalIgnoreCase.Equals(_hostName, request.Host))
                 throw new ArgumentException(nameof(request.Host));
 
+            using var scope = _logger.BeginScope("attach volume {VolumePath} to {VirtialMachineId} on {HostName}", request.VolumePath, request.VMId, _hostName);
+
             //maybe check path in storage 
 
             Command cmd;
             var commands = new List<Command>(3);
+
+            _logger.LogInformation("attach volume {VolumePath} to {VirtialMachineId}", request.VolumePath, request.VMId);
 
             //todo VHDSet switch
 
@@ -530,10 +575,14 @@ namespace HypervCsiDriver.Infrastructure
             if (string.IsNullOrEmpty(request.VolumePath))
                 throw new ArgumentNullException(nameof(request.VolumePath));
 
+            using var scope = _logger.BeginScope("detach volume {VolumePath} to {VirtialMachineId} on {HostName}", request.VolumePath, request.VMId, _hostName);
+
             //maybe check path in storage 
 
             Command cmd;
             var commands = new List<Command>(4);
+
+            _logger.LogInformation("detach volume {VolumePath} to {VirtialMachineId}", request.VolumePath, request.VMId);
 
             //todo VHDSet switch
 
@@ -603,11 +652,16 @@ namespace HypervCsiDriver.Infrastructure
             if (vmId == Guid.Empty)
                 throw new ArgumentNullException(nameof(vmId));
 
+            using var scope = _logger.BeginScope("get virtual machine volumes {VirtialMachineId} on {HostName}", vmId, _hostName);
+
+
             //maybe check path in storage 
             //todo VHDSet switch
 
             Command cmd;
             var commands = new List<Command>(4);
+
+            _logger.LogDebug("get virtual machine volumes of {VirtialMachineId}", vmId);
 
             cmd = new Command("Get-VM");
             cmd.Parameters.Add("Id", vmId);
@@ -648,8 +702,12 @@ namespace HypervCsiDriver.Infrastructure
 
         public IAsyncEnumerable<HypervVolumeFlowInfo> GetVolumeFlowsAsnyc(HypervVolumeFlowFilter filter)
         {
+            using var scope = _logger.BeginScope("get volume flows on {HostName}", _hostName);
+
             Command cmd;
             var commands = new List<Command>(2);
+
+            _logger.LogDebug("get volume flows");
 
             cmd = new Command("Get-StorageQoSFlow");
             if (filter != null && filter.VMId != Guid.Empty)

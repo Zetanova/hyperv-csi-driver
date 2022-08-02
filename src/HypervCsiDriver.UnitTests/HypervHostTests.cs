@@ -1,5 +1,6 @@
 using HypervCsiDriver.Infrastructure;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 using System;
 using System.Linq;
 using System.Reactive.Linq;
@@ -29,9 +30,13 @@ namespace HypervCsiDriver.UnitTests
             {
                 //todo read config  Token=Configuration["somesection:somekey"]
 
-                _host = new HypervHost(hostName, "Administrator", null)
+                var options = new HyperVHostOptions
                 {
+                    HostName = hostName,
+                    UserName = "Administrator"
                 };
+
+                _host = new HypervHost(Options.Create(options), null);
                 //await services.ConnectAsync();
             }
             return _host;

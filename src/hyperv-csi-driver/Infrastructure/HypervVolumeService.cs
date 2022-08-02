@@ -1,4 +1,5 @@
 ﻿using HypervCsiDriver.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
@@ -39,11 +40,15 @@ namespace HypervCsiDriver.Infrastructure
     {
         readonly HypervCsiDriverOptions _options;
 
+        readonly IServiceScope _scope;
+
         ImmutableDictionary<string, HypervHost> _hosts = ImmutableDictionary.Create<string, HypervHost>(StringComparer.OrdinalIgnoreCase);
 
-        public HypervVolumeService(IOptions<HypervCsiDriverOptions> options)
+        public HypervVolumeService(IServiceProvider services, IOptions<HypervCsiDriverOptions> options)
         {
             _options = options.Value;
+
+            _scope = services.CreateScope();
         }
 
         HypervHost GetHost(string hostName)
@@ -55,11 +60,15 @@ namespace HypervCsiDriver.Infrastructure
 
             if (!_hosts.TryGetValue(hostName, out var host))
             {
-                host = new HypervHost(hostName, _options.UserName, _options.KeyFile)
+                var options = new HyperVHostOptions
                 {
-                    DefaultStorage = _options.DefaultStorage,
-                    
+                    HostName = hostName,
+                    UserName = _options.UserName,
+                    KeyFile = _options.KeyFile,
+                    DefaultStorage = _options.DefaultStorage
                 };
+
+                host = ActivatorUtilities.CreateInstance<HypervHost>(_scope.ServiceProvider, Options.Create(options));
 
                 ImmutableDictionary<string, HypervHost> current;
                 ImmutableDictionary<string, HypervHost> result;
@@ -176,6 +185,8 @@ namespace HypervCsiDriver.Infrastructure
 
             foreach (var host in hosts.Values)
                 host.Dispose();
+
+            _scope.Dispose();
         }
 
         public async IAsyncEnumerable<HypervVolumeDetailResult> GetVolumeDetailsAsync(IEnumerable<HypervVolumeInfo> volumes, [EnumeratorCancellation] CancellationToken cancellationToken = default)

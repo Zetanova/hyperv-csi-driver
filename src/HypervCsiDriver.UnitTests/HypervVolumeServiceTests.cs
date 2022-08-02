@@ -11,6 +11,7 @@ using System.Reactive.Linq;
 using System.Threading.Tasks;
 using Xunit;
 using System.Threading;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace HypervCsiDriver.UnitTests
 {
@@ -18,15 +19,26 @@ namespace HypervCsiDriver.UnitTests
     {
         public IConfiguration Configuration { get; set; }
 
+        public IServiceProvider Services { get; set; }
+
         IHypervVolumeService _service;
 
         public HypervVolumeServiceFixture()
         {
-            var builder = new ConfigurationBuilder()
-                .AddUserSecrets<HypervHostFixture>()
-                .AddEnvironmentVariables();
+            {
+                var builder = new ConfigurationBuilder()
+                    .AddUserSecrets<HypervHostFixture>()
+                    .AddEnvironmentVariables();
 
-            Configuration = builder.Build();
+                Configuration = builder.Build();
+            }
+
+            {
+                var sb = new ServiceCollection();
+                sb.AddLogging();
+
+                Services = sb.BuildServiceProvider();
+            }            
         }
 
         public async Task<IHypervVolumeService> GetHypervVolumeSerivceAsync(string hostName)
@@ -34,14 +46,12 @@ namespace HypervCsiDriver.UnitTests
             if (_service is null)
             {
                 //todo read config  Token=Configuration["somesection:somekey"]
-                var options = Options.Create(new HypervCsiDriverOptions
+                var options = new HypervCsiDriverOptions
                 {
-                     HostName = hostName
-                });
-
-                _service = new HypervVolumeService(options)
-                {
+                    HostName = hostName
                 };
+
+                _service = new HypervVolumeService(Services, Options.Create(options));
                 //await services.ConnectAsync();
             }
             return _service;

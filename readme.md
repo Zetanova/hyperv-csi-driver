@@ -18,7 +18,7 @@ and attaches it to the requested VirtualMachine.
   to all HyperV hosts with Powershell over SSH transport
 - one SSH PupPrivkey
 
-## install requisites
+## Install requisites
 
 ### HyperV Host: OpernSSH Server and Powershell Core
 on each HyperV Host run in powershell:
@@ -117,9 +117,9 @@ create a ssh secret and deploy the driver
 kubectl create secret generic csi-hyperv-key --from-file=id_ed25519=~/path/to/local-ssh-keys --from-file=known_hosts=~/path/to/known_hosts
 
 #static namespace csi-hyperv
-kubectl apply -f .\deploy\kubernetes-1.17\csi-hyperv\rbac.yaml
-kubectl apply -f .\deploy\kubernetes-1.17\csi-hyperv\controller.yaml
-kubectl apply -f .\deploy\kubernetes-1.17\csi-hyperv\node.yaml
+kubectl apply -f .\deploy\kubernetes-1.19\csi-hyperv\rbac.yaml
+kubectl apply -f .\deploy\kubernetes-1.19\csi-hyperv\controller.yaml
+kubectl apply -f .\deploy\kubernetes-1.19\csi-hyperv\node.yaml
 ```
 
 ## Run example application and validate
@@ -158,7 +158,14 @@ The cluster storage can run over S2D or SOFS.
 - The support of a shared-nothing HyperV Host Array is technically possible, 
 but not implemented.
 
+## Build
+
 ### docker build
 cd src
 docker build -f hyperv-csi-driver\Dockerfile -t zetanova/hyperv-csi-driver:latest .
 docker push zetanova/hyperv-csi-driver:latest
+
+## Deployment
+
+running since Jan. 2020
+tested up to kubernetes 1.20 

@@ -158,3 +158,7 @@ The cluster storage can run over S2D or SOFS.
 - The support of a shared-nothing HyperV Host Array is technically possible, 
 but not implemented.
 
+### docker build
+cd src
+docker build -f hyperv-csi-driver\Dockerfile -t zetanova/hyperv-csi-driver:latest .
+docker push zetanova/hyperv-csi-driver:latest

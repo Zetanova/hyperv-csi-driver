@@ -5,6 +5,7 @@ using HypervCsiDriver.Utils;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace HypervCsiDriver
@@ -16,6 +17,11 @@ namespace HypervCsiDriver
         private readonly IHypervNodeService _service;
 
         private readonly ILogger _logger;
+
+        //stage-volume is tracey until 1.22, should be removed
+        //see https://github.com/kubernetes/kubernetes/issues/100182
+        private static readonly AutoResetEvent _stageEvent = new AutoResetEvent(true);
+
         public HypervCsiNode(IHypervNodeService service, ILogger<HypervCsiNode> logger)
         {
             _service = service;
@@ -128,41 +134,61 @@ namespace HypervCsiDriver
                     throw new RpcException(new Status(StatusCode.InvalidArgument, "unknown volume access type"));
             }
 
-            await _service.MountDeviceAsync(new HypervNodeMountRequest
-            {
-                Name = request.VolumeId,
-                VhdId = vhdId,
-                ControllerNumber = controllerNumber,
-                ControllerLocation = controllerLocation,
-                FSType = fsType,
-                Options = mountFlogs,
-                Readonly = ro,
-                Raw = raw,
-                TargetPath = request.StagingTargetPath
-            },
-            context.CancellationToken);
+            if (!_stageEvent.WaitOne(TimeSpan.FromSeconds(10)))
+                throw new RpcException(new Status(StatusCode.Unavailable, "stage event timeout"));
 
-            var rsp = new NodeStageVolumeResponse
+            try
             {
-            };
+                await _service.MountDeviceAsync(new HypervNodeMountRequest
+                {
+                    Name = request.VolumeId,
+                    VhdId = vhdId,
+                    ControllerNumber = controllerNumber,
+                    ControllerLocation = controllerLocation,
+                    FSType = fsType,
+                    Options = mountFlogs,
+                    Readonly = ro,
+                    Raw = raw,
+                    TargetPath = request.StagingTargetPath
+                },
+                context.CancellationToken);
 
-            return rsp;
+                var rsp = new NodeStageVolumeResponse
+                {
+                };
+
+                return rsp;
+            }
+            finally
+            {
+                _stageEvent.Set();
+            }
         }
 
         public override async Task<NodeUnstageVolumeResponse> NodeUnstageVolume(NodeUnstageVolumeRequest request, ServerCallContext context)
         {
-            await _service.UnmountDeviceAsync(new HypervNodeUnmountRequest
-            {
-                Name = request.VolumeId,
-                TargetPath = request.StagingTargetPath
-            },
-            context.CancellationToken);
+            if (!_stageEvent.WaitOne(TimeSpan.FromSeconds(10)))
+                throw new RpcException(new Status(StatusCode.Unavailable, "stage event timeout"));
 
-            var rsp = new NodeUnstageVolumeResponse
+            try
             {
-            };
+                await _service.UnmountDeviceAsync(new HypervNodeUnmountRequest
+                {
+                    Name = request.VolumeId,
+                    TargetPath = request.StagingTargetPath
+                },
+                context.CancellationToken);
 
-            return rsp;
+                var rsp = new NodeUnstageVolumeResponse
+                {
+                };
+
+                return rsp;
+            }
+            finally
+            {
+                _stageEvent.Set();
+            }
         }
 
         public override async Task<NodePublishVolumeResponse> NodePublishVolume(NodePublishVolumeRequest request, ServerCallContext context)

@@ -6,6 +6,7 @@ using PNet.Automation;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Management.Automation;
 using System.Management.Automation.Runspaces;
 using System.Reactive.Linq;
 using System.Threading;
@@ -501,6 +502,7 @@ namespace HypervCsiDriver.Infrastructure
 
             //Passthru not possible since pwsh 7
             //Error: Add-VMHardDiskDrive: The Update-ClusterVirtualMachineConfiguration command could not be completed.
+            //Error: Set-VMHardDiskDrive: The Update-ClusterVirtualMachineConfiguration command could not be completed.
 
             //cmd = new Command("Get-VM");
             //cmd.Parameters.Add("Id", request.VMId);
@@ -519,17 +521,66 @@ namespace HypervCsiDriver.Infrastructure
             //});
             //commands.Add(cmd);
 
+
+            //lookup free disk drive
+            
             cmd = new Command("Get-VM");
             cmd.Parameters.Add("Id", request.VMId);
             commands.Add(cmd);
 
-            cmd = new Command("Add-VMHardDiskDrive");
-            cmd.Parameters.Add("Path", request.VolumePath);
-            cmd.Parameters.Add("ErrorAction", "SilentlyContinue");
-            //MaximumIOPS, MinimumIOPS
+            cmd = new Command("Get-VMHardDiskDrive");
+            cmd.Parameters.Add("ControllerType", "SCSI");
             commands.Add(cmd);
 
+            cmd = new Command("Where-Object");
+            cmd.Parameters.Add("Property", "Path");
+            cmd.Parameters.Add("not");
+            commands.Add(cmd);
+
+            cmd = new Command("Select-Object");
+            cmd.Parameters.Add("First", 1);
+            cmd.Parameters.Add("Property", new[] {
+                "ControllerType", "ControllerLocation", "ControllerNumber"
+            });
+            commands.Add(cmd);
+
+            dynamic freeDrive = await _power.InvokeAsync(commands)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            commands.Clear();
+
+
+            cmd = new Command("Get-VM");
+            cmd.Parameters.Add("Id", request.VMId);
+            commands.Add(cmd);
+
+            if (freeDrive is null)
+            {
+                cmd = new Command("Add-VMHardDiskDrive");
+                cmd.Parameters.Add("Path", request.VolumePath);
+                cmd.Parameters.Add("ErrorAction", "SilentlyContinue");
+                //MaximumIOPS, MinimumIOPS
+                commands.Add(cmd);
+            } 
+            else
+            {
+                cmd = new Command("Get-VMHardDiskDrive");
+                cmd.Parameters.Add("ControllerType", freeDrive.ControllerType);
+                cmd.Parameters.Add("ControllerNumber", freeDrive.ControllerNumber);
+                cmd.Parameters.Add("ControllerLocation", freeDrive.ControllerLocation);
+                //MaximumIOPS, MinimumIOPS
+                commands.Add(cmd);
+
+                cmd = new Command("Set-VMHardDiskDrive");
+                cmd.Parameters.Add("Path", request.VolumePath);
+                cmd.Parameters.Add("ErrorAction", "SilentlyContinue");
+                //MaximumIOPS, MinimumIOPS
+                commands.Add(cmd);
+            }
+
             _ = await _power.InvokeAsync(commands).LastOrDefaultAsync(cancellationToken);
+
+
 
             commands.Clear();
 
@@ -547,6 +598,7 @@ namespace HypervCsiDriver.Infrastructure
             commands.Add(cmd);
 
             cmd = new Command("Select-Object");
+            cmd.Parameters.Add("First", 1);
             cmd.Parameters.Add("Property", new[] {
                 "VMId", "VMName", "ComputerName", "Path",
                 "ControllerNumber", "ControllerLocation" 

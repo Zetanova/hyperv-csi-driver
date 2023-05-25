@@ -606,10 +606,6 @@ namespace HypervCsiDriver.Infrastructure
             });
             commands.Add(cmd);
 
-            dynamic item = await _power.InvokeAsync(commands).ThrowOnError().FirstAsync(cancellationToken);
-            //todo: fix attacked disk cant be found immediately
-
-
             //bug: return of invalid location (before free disk drive usage)
             //add-hard-disk on a SCSI controller with already 64 disks attached succeeded
             //and get-hard-disk returned ControllerLocation 63,
@@ -617,16 +613,32 @@ namespace HypervCsiDriver.Infrastructure
             //on manual expection the drive path was empty
             //result: volumeattachments[Attached: true, Controller Number: 0, Controller Location:  63]  
 
-            return new HypervVirtualMachineVolumeInfo
+
+            //sometimes attached disk can't be found immediately
+            var retry = 5;
+
+            do
             {
-                VMId = item.VMId,
-                VMName = item.VMName,
-                VolumeName = HypervUtils.GetFileNameWithoutExtension((string)item.Path),
-                VolumePath = item.Path,
-                Host = item.ComputerName,
-                ControllerNumber = item.ControllerNumber,
-                ControllerLocation = item.ControllerLocation
-            };
+                dynamic? item = await _power.InvokeAsync(commands).ThrowOnError()
+                    .FirstOrDefaultAsync(cancellationToken);
+                
+                if(item is not null)
+                    return new HypervVirtualMachineVolumeInfo
+                    {
+                        VMId = item.VMId,
+                        VMName = item.VMName,
+                        VolumeName = HypervUtils.GetFileNameWithoutExtension((string)item.Path),
+                        VolumePath = item.Path,
+                        Host = item.ComputerName,
+                        ControllerNumber = item.ControllerNumber,
+                        ControllerLocation = item.ControllerLocation
+                    };
+
+                await Task.Delay(3000);
+            }
+            while (--retry >= 0 && !cancellationToken.IsCancellationRequested);
+
+            throw new TaskCanceledException("disk attach in progress");
         }
 
         public async Task DetachVolumeAsync(HypervDetachVolumeRequest request, CancellationToken cancellationToken = default)
@@ -692,7 +704,7 @@ namespace HypervCsiDriver.Infrastructure
             commands.Add(cmd);
 
 
-            var retry = 2;
+            var retry = 5;
 
             do
             {
@@ -701,11 +713,11 @@ namespace HypervCsiDriver.Infrastructure
                 if (result is null)
                     return;
 
-                await Task.Delay(1000);
+                await Task.Delay(3000);
             }
-            while (--retry > 0);
+            while (--retry >= 0 && !cancellationToken.IsCancellationRequested);
 
-            throw new Exception("disk has not be detached");
+            throw new TaskCanceledException("disk detach in progress");
         }
 
         public IAsyncEnumerable<HypervVirtualMachineVolumeInfo> GetVirtualMachineVolumesAsync(Guid vmId, HypervVirtualMachineVolumeFilter filter)

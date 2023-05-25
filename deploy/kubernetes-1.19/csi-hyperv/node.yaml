@@ -50,7 +50,7 @@ spec:
               mountPath: /registration
 
         - name: csi-hyperv
-          image: zetanova/hyperv-csi-driver:1.19.1
+          image: zetanova/hyperv-csi-driver:1.19.2
           securityContext:
             privileged: true
           lifecycle:

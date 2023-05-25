@@ -103,7 +103,7 @@ namespace HypervCsiDriver.Infrastructure
         public async Task MountDeviceAsync(HypervNodeMountRequest request, CancellationToken cancellationToken = default)
         {
             using var scope = _logger.BeginScope("mounting {VolumeName}", request.Name);
-            
+
             Command cmd;
             var commands = new List<Command>(4);
 
@@ -123,7 +123,7 @@ namespace HypervCsiDriver.Infrastructure
 
                 //hack until Join-Path in pipe
                 dynamic obj = await _power.InvokeAsync(commands).ThrowOnError()
-                       .FirstOrDefaultAsync();
+                       .FirstOrDefaultAsync(cancellationToken);
 
                 if (obj is not null)
                 {
@@ -137,7 +137,7 @@ namespace HypervCsiDriver.Infrastructure
 
                     blockDeviceName = await _power.InvokeAsync(commands).ThrowOnError()
                         .Select(n => (string)n.BaseObject)
-                       .FirstOrDefaultAsync();
+                       .FirstOrDefaultAsync(cancellationToken);
                 }
             }
 
@@ -296,14 +296,14 @@ namespace HypervCsiDriver.Infrastructure
             commands.Add(cmd);
 
             ///tmp/testdrive /dev/sdb1 ext4 rw,noatime,seclabel,discard
-            var mountpoint = await _power.InvokeAsync(commands).ThrowOnError() 
+            var mountpoint = await _power.InvokeAsync(commands).ThrowOnError()
                 .Select(n => n.BaseObject).OfType<string>()
                 .FirstOrDefaultAsync(cancellationToken);
 
             if (string.IsNullOrEmpty(mountpoint))
             {
                 _logger.LogDebug("create {TargetPath}", request.TargetPath);
-                
+
                 commands.Clear();
 
                 cmd = new Command("New-Item");
@@ -340,7 +340,7 @@ namespace HypervCsiDriver.Infrastructure
                 mountpoint = request.TargetPath;
             }
 
-            if(!setPermissions)
+            if (!setPermissions)
             {
                 _logger.LogDebug("empty check of {Mountpoint}", mountpoint);
 
@@ -360,8 +360,8 @@ namespace HypervCsiDriver.Infrastructure
                         }, cancellationToken);
 
                     setPermissions = !hasFiles;
-                } 
-                catch(Exception ex)
+                }
+                catch (Exception ex)
                 {
                     _logger.LogWarning("empty check error", ex);
                 }
@@ -388,6 +388,40 @@ namespace HypervCsiDriver.Infrastructure
             Command cmd;
             var commands = new List<Command>(1);
 
+            cmd = new Command("Test-Path");
+            cmd.Parameters.Add("Path", request.TargetPath);
+            commands.Add(cmd);
+
+            var pathExists = await _power.InvokeAsync(commands)
+                .Select(n => n.BaseObject).OfType<bool>()
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (!pathExists)
+            {
+                _logger.LogWarning("test for path {TargetPath} failed", request.TargetPath);
+                return;
+            }
+
+            commands.Clear();
+
+            //stage-volume is tracey until 1.22
+            //see https://github.com/kubernetes/kubernetes/issues/100182
+            //see https://bugzilla.redhat.com/show_bug.cgi?id=1936408
+            //workaround: we sync before unmount
+
+            _logger.LogDebug("sync {TargetPath}", request.TargetPath);
+
+            cmd = new Command($"sync --file-system {request.TargetPath}", true);
+            commands.Add(cmd);
+
+            _ = await _power.InvokeAsync(commands)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+
+            commands.Clear();
+
             _logger.LogDebug("unmount {TargetPath}", request.TargetPath);
 
             //umount /drivetest
@@ -397,10 +431,12 @@ namespace HypervCsiDriver.Infrastructure
             _ = await _power.InvokeAsync(commands)
                 .FirstOrDefaultAsync(cancellationToken);
 
-
             _logger.LogDebug("delete {TargetPath}", request.TargetPath);
 
             commands.Clear();
+
+
+            _logger.LogDebug("remove {TargetPath}", request.TargetPath);
 
             cmd = new Command("Remove-Item");
             cmd.Parameters.Add("Path", request.TargetPath);
@@ -429,7 +465,7 @@ namespace HypervCsiDriver.Infrastructure
 
             _ = await _power.InvokeAsync(commands).ThrowOnError()
                .FirstOrDefaultAsync(cancellationToken);
-             
+
 
             _logger.LogDebug("mount {SourcePath} to {TargetPath}", request.StagingTargetPath, request.PublishTargetPath);
 
@@ -461,7 +497,7 @@ namespace HypervCsiDriver.Infrastructure
 
             _ = await _power.InvokeAsync(commands)
                 .FirstOrDefaultAsync(cancellationToken);
-              
+
 
             _logger.LogDebug("delete {TargetPath}", request.TargetPath);
 

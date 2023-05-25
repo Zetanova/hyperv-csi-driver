@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using PNet.Automation;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Management.Automation;
 using System.Management.Automation.Runspaces;
@@ -399,8 +400,12 @@ namespace HypervCsiDriver.Infrastructure
                     Shared = false //todo .vhds                    
                 };
             } 
-            catch(Exception ex)
+            catch(RemoteException ex)
             {
+                //todo
+                //Getting the mounted storage instance for the path 'C:\ClusterStorage\hv05\Volumes\pvc-XXX.vhdx' failed.
+                //The operation cannot be performed while the object is in use.
+
                 throw;
             }            
         }

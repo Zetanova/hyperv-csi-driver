@@ -607,6 +607,15 @@ namespace HypervCsiDriver.Infrastructure
             commands.Add(cmd);
 
             dynamic item = await _power.InvokeAsync(commands).ThrowOnError().FirstAsync(cancellationToken);
+            //todo: fix attacked disk cant be found immediately
+
+
+            //bug: return of invalid location (before free disk drive usage)
+            //add-hard-disk on a SCSI controller with already 64 disks attached succeeded
+            //and get-hard-disk returned ControllerLocation 63,
+            //expected invalid ControllerLocation was 64 (SCSI max is 63)
+            //on manual expection the drive path was empty
+            //result: volumeattachments[Attached: true, Controller Number: 0, Controller Location:  63]  
 
             return new HypervVirtualMachineVolumeInfo
             {

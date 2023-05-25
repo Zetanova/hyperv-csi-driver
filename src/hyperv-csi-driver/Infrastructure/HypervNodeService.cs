@@ -454,6 +454,30 @@ namespace HypervCsiDriver.Infrastructure
             Command cmd;
             var commands = new List<Command>(1);
 
+
+            //staging globalmount path can be unmounted
+            //mount will fail: special device /var/lib/kubelet/plugins/kubernetes.io/csi/pv/pvc-XXX/globalmount does not exist
+            //see: https://github.com/kubernetes-sigs/azurefile-csi-driver/issue/875
+            //workaround: we lookup the target for an existing mount
+
+            cmd = new Command($"findmnt -fnr --target {request.PublishTargetPath}", true);
+            commands.Add(cmd);
+
+            ///var/lib/kubelet/pods/ed0cc331-7d86-40d8-a30e-a8df89fbc0e8/volumes/kubernetes.io~csi/pvc-XXX/mount /dev/sdb1 ext4 rw,noatime,seclabel,discard
+            var mountpoint = await _power.InvokeAsync(commands).ThrowOnError()
+                .Select(n => n.BaseObject).OfType<string>()
+                .FirstOrDefaultAsync(cancellationToken);
+
+            //todo fail on wrong mount source
+
+            if (!string.IsNullOrEmpty(mountpoint))
+            {
+                _logger.LogDebug("mount to {TargetPath} exsists", request.PublishTargetPath);
+                return;
+            }
+
+            commands.Clear();
+
             _logger.LogDebug("create {TargetPath}", request.PublishTargetPath);
 
             //create target dir

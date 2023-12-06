@@ -516,7 +516,7 @@ namespace HypervCsiDriver.Infrastructure
             _logger.LogDebug("unmount {TargetPath}", request.TargetPath);
 
             //umount /drivetest
-            cmd = new Command($"& umount {request.TargetPath} 2>&1", true);
+            cmd = new Command($"& umount --recursive {request.TargetPath} 2>&1", true);
             commands.Add(cmd);
 
             _ = await _power.InvokeAsync(commands)

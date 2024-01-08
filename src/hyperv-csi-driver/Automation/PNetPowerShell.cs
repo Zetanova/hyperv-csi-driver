@@ -82,6 +82,8 @@ namespace PNet.Automation
 
         readonly SemaphoreSlim _lock = new SemaphoreSlim(1, 1);
 
+        readonly System.Threading.Timer _timer;
+
         List<RunspaceEntry> _entries = new List<RunspaceEntry>(10);
 
         TaskCompletionSource<RunspaceEntry> _tcs = null;
@@ -96,12 +98,15 @@ namespace PNet.Automation
 
         public PNetRunspacePool()
         {
+            _timer = new System.Threading.Timer(OnScarvange);
         }
 
-        public PNetRunspacePool(RunspaceConnectionInfo connectionInfo)
+        public PNetRunspacePool(RunspaceConnectionInfo connectionInfo) : base()
         {
             _connectionInfo = connectionInfo;
         }
+
+
 
         public async Task<Runspace> RentAsync(CancellationToken cancellationToken = default)
         {
@@ -111,29 +116,9 @@ namespace PNet.Automation
 
             try
             {
-                RunspaceEntry? entry;
+                CleanupRunspaces();
 
-                //clean up runspaces
-                for (int i = _entries.Count - 1; i >= 0; i--)
-                {
-                    entry = _entries[i];
-                    if (!entry.Rented)
-                    {
-                        switch (entry.Runspace.RunspaceStateInfo.State, entry.Runspace.RunspaceAvailability)
-                        {
-                            case (RunspaceState.BeforeOpen, _):
-                                break;
-                            case (RunspaceState.Opened, RunspaceAvailability.Available):
-                                break;
-                            default:
-                                _entries.RemoveAt(i);
-                                entry.Runspace.Dispose();
-                                break;
-                        }
-                    }
-                }
-
-                entry = _entries.FirstOrDefault(n => !n.Rented);
+                var entry = _entries.FirstOrDefault(n => !n.Rented);
 
                 if (entry is null)
                 {
@@ -168,8 +153,12 @@ namespace PNet.Automation
                 }
 
                 entry.Rented = true;
+                entry.Timestamp = DateTime.UtcNow;
+
                 if(++entry.RentCount >= MaxRentCount)
                     _entries.Remove(entry); //final rent
+
+                ToggleScavenger();
 
                 return entry.Runspace;
             }
@@ -217,7 +206,11 @@ namespace PNet.Automation
                 }
 
                 entry.Rented = false;
+                entry.Timestamp = DateTime.UtcNow;
                 _tcs?.TrySetResult(entry);
+
+                ToggleScavenger();
+
                 return true;
             }
             finally
@@ -267,8 +260,73 @@ namespace PNet.Automation
                 }
 
                 entry.Rented = false;
+                entry.Timestamp = DateTime.UtcNow;
                 _tcs?.TrySetResult(entry);
+
+                ToggleScavenger();
+
                 return true;
+            }
+            finally
+            {
+                _lock.Release();
+            }
+        }
+
+        void CleanupRunspaces()
+        {
+            for (int i = _entries.Count - 1; i >= 0; i--)
+            {
+                var entry = _entries[i];
+                if (!entry.Rented)
+                {
+                    switch (entry.Runspace.RunspaceStateInfo.State, entry.Runspace.RunspaceAvailability)
+                    {
+                        case (RunspaceState.BeforeOpen, _):
+                            break;
+                        case (RunspaceState.Opened, RunspaceAvailability.Available):
+                            break;
+                        default:
+                            _entries.RemoveAt(i);
+                            entry.Runspace.Dispose();
+                            break;
+                    }
+                }
+            }
+        }
+
+        void ToggleScavenger()
+        {
+            if(_entries.Count == 1)
+                _timer.Change(TimeSpan.FromMinutes(3), TimeSpan.FromMinutes(10));
+            else if(_entries.Count == 0)
+                _timer.Change(Timeout.Infinite, Timeout.Infinite);
+        }
+
+        void OnScarvange(object? state)
+        {
+            var locked = _lock.Wait(3000);
+
+            if (!locked)
+                return;
+
+            try
+            {
+                CleanupRunspaces();
+
+                var deadline = DateTime.UtcNow.AddMinutes(-1);
+                var entry = _entries
+                    .Where(n => !n.Rented && n.Timestamp < deadline)
+                    .OrderBy(n => n.Timestamp)
+                    .FirstOrDefault();
+
+                if(entry is not null)
+                {
+                    _entries.Remove(entry);
+                    entry.Runspace.Dispose();
+                }
+
+                ToggleScavenger();
             }
             finally
             {
@@ -281,6 +339,8 @@ namespace PNet.Automation
         {
             if (_disposed)
                 return;
+
+            _timer.Dispose();
 
             _disposed = true;
 
@@ -303,6 +363,8 @@ namespace PNet.Automation
             public bool Rented { get; set; }
 
             public int RentCount { get; set; } = 0;
+
+            public DateTime Timestamp { get; set; }
         }
     }
 

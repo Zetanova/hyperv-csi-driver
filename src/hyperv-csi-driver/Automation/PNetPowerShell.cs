@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
+using System.Diagnostics;
 using System.Linq;
 using System.Management.Automation;
 using System.Management.Automation.Runspaces;
@@ -27,7 +27,7 @@ namespace PNet.Automation
 
     public sealed class PNetPowerShell : IPNetPowerShell, IDisposable
     {
-        readonly PNetRunspacePool _pool;
+        readonly PNetRunspacePool _pool = new PNetRunspacePool();
 
         public int RunspaceCount => _pool.InstanceCount;
 
@@ -37,7 +37,6 @@ namespace PNet.Automation
 
         public PNetPowerShell()
         {
-            _pool = new PNetRunspacePool();
         }
 
         public PNetPowerShell(string hostName, string userName, string? keyFile)
@@ -49,7 +48,7 @@ namespace PNet.Automation
 
             var conInfo = new SSHConnectionInfo(userName, hostName, keyFile);
 
-            _pool = new PNetRunspacePool(conInfo);                        
+            _pool = new PNetRunspacePool(conInfo);
         }
 
         async Task<PNetRunspaceContainer> GetRunspaceAsync(CancellationToken cancellationToken = default)
@@ -71,7 +70,7 @@ namespace PNet.Automation
             if (_disposed)
                 return;
 
-            _pool?.Dispose();
+            _pool.Dispose();
 
             _disposed = true;
         }
@@ -90,6 +89,8 @@ namespace PNet.Automation
         public int MaxSize { get; set; } = 10;
 
         public int MinSize { get; set; } = 0;
+
+        public int MaxRentCount { get; set; } = 20;
 
         public int InstanceCount => _entries.Count;
 
@@ -113,10 +114,10 @@ namespace PNet.Automation
                 RunspaceEntry? entry;
 
                 //clean up runspaces
-                for (int i = _entries.Count-1; i >= 0; i--)
+                for (int i = _entries.Count - 1; i >= 0; i--)
                 {
                     entry = _entries[i];
-                    if(!entry.Rented)
+                    if (!entry.Rented)
                     {
                         switch (entry.Runspace.RunspaceStateInfo.State, entry.Runspace.RunspaceAvailability)
                         {
@@ -126,7 +127,7 @@ namespace PNet.Automation
                                 break;
                             default:
                                 _entries.RemoveAt(i);
-                                entry.Runspace.Dispose();                                
+                                entry.Runspace.Dispose();
                                 break;
                         }
                     }
@@ -134,9 +135,9 @@ namespace PNet.Automation
 
                 entry = _entries.FirstOrDefault(n => !n.Rented);
 
-                if(entry is null)
+                if (entry is null)
                 {
-                    if(_entries.Count >= MaxSize)
+                    if (_entries.Count >= MaxSize)
                     {
                         do
                         {
@@ -163,10 +164,13 @@ namespace PNet.Automation
                             Runspace = rs
                         };
                         _entries.Add(entry);
-                    }                    
+                    }
                 }
 
                 entry.Rented = true;
+                if(++entry.RentCount >= MaxRentCount)
+                    _entries.Remove(entry); //final rent
+
                 return entry.Runspace;
             }
             finally
@@ -184,7 +188,7 @@ namespace PNet.Automation
             try
             {
                 var entry = _entries.FirstOrDefault(n => n.Runspace == runspace);
-                
+
                 if (entry is null)
                     return false;
 
@@ -194,10 +198,12 @@ namespace PNet.Automation
                         break;
                     case (RunspaceState.Opened, RunspaceAvailability.Available):
                         break;
-                    default:                        
+                    default:
                         _entries.Remove(entry);
-                        return false;                        
+                        return false;
                 }
+
+                Debug.Assert(entry.Rented);
 
                 try
                 {
@@ -213,7 +219,7 @@ namespace PNet.Automation
                 entry.Rented = false;
                 _tcs?.TrySetResult(entry);
                 return true;
-            } 
+            }
             finally
             {
                 _lock.Release();
@@ -246,6 +252,8 @@ namespace PNet.Automation
                         _entries.Remove(entry);
                         return false;
                 }
+
+                Debug.Assert(entry.Rented);
 
                 try
                 {
@@ -281,7 +289,7 @@ namespace PNet.Automation
             var entries = _entries;
             _entries = null;
 
-            if(entries is not null)
+            if (entries is not null)
             {
                 foreach (var entry in entries)
                     entry.Runspace.Dispose();
@@ -293,6 +301,8 @@ namespace PNet.Automation
             public Runspace Runspace { get; init; }
 
             public bool Rented { get; set; }
+
+            public int RentCount { get; set; } = 0;
         }
     }
 

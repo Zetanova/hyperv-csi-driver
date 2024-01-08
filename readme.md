@@ -161,9 +161,11 @@ but not implemented.
 ## Build
 
 ### docker build
+```
 cd src
 docker build -f hyperv-csi-driver\Dockerfile -t zetanova/hyperv-csi-driver:latest .
 docker push zetanova/hyperv-csi-driver:latest
+```
 
 ## Deployment
 

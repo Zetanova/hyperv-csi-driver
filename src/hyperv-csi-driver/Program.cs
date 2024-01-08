@@ -6,17 +6,20 @@ using Microsoft.Extensions.Logging;
 using System;
 using System.IO;
 using System.Net;
+using System.Threading.Tasks;
 
 namespace HypervCsiDriver
 {
     public class Program
     {
-        public static void Main(string[] args)
+        public static async Task Main(string[] args)
         {
             //required until powershell 7.2+
             AppContext.SetSwitch("System.Runtime.Serialization.EnableUnsafeBinaryFormatterSerialization", true);
 
-            CreateHostBuilder(args).Build().Run();
+            var app = CreateHostBuilder(args).Build();
+
+            await app.RunAsync();
         }
 
         public static IHostBuilder CreateHostBuilder(string[] args) =>

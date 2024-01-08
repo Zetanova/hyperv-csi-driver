@@ -9,6 +9,7 @@ using System.Reactive.Concurrency;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using System.Runtime.ExceptionServices;
+using System.Threading;
 
 namespace PNet.Automation
 {
@@ -196,10 +197,13 @@ namespace PNet.Automation
                 }
 
                 var s1 = Observable.Merge(pipeSource, pipeControlSource, Scheduler.CurrentThread)
-                    //.Finally(() => Debug.WriteLine($"Pipe[{pipe.InstanceId}]: completed in state '{pipe.PipelineStateInfo.State}'"))
+                    .ObserveOn(Scheduler.Default) //required to unsubscribe in DataAdded event handler
+                                                  //.Finally(() => Debug.WriteLine($"Pipe[{pipe.InstanceId}]: completed in state '{pipe.PipelineStateInfo.State}'"))
                     .Subscribe(o);
 
-                return new CompositeDisposable(s0, s1, Disposable.Create(() =>
+                var s3 = new CompositeDisposable(1);
+
+                var s2 = Disposable.Create(() =>
                 {
                     if (pipe.Input.IsOpen)
                     {
@@ -209,27 +213,37 @@ namespace PNet.Automation
 
                     if (pipe.PipelineStateInfo.State == PipelineState.Running)
                     {
-                        Debug.WriteLineIf(!pipe.Output.EndOfPipeline, $"Pipe[{pipe.InstanceId}]: output not complete: {pipe.Output.Count} count");
+                        //Debug.WriteLineIf(!pipe.Output.EndOfPipeline, $"Pipe[{pipe.InstanceId}] Thread[{Thread.CurrentThread.ManagedThreadId}]: output not complete: {pipe.Output.Count} count");
 
-                        try
+                        s3.Add(new ScheduledDisposable(Scheduler.Default, Disposable.Create(() =>
                         {
-                            pipe.Stop();
-                        }
-                        catch (PSObjectDisposedException)
-                        {
-                            //ignore
-                            //Debug.WriteLine($"Pipe[{pipe.InstanceId}]: stop error");
-                        }
+                            if (pipe.PipelineStateInfo.State != PipelineState.Running)
+                                return;
+
+                            Debug.WriteLineIf(!pipe.Output.EndOfPipeline, $"Pipe[{pipe.InstanceId}] Thread[{Thread.CurrentThread.ManagedThreadId}]: output not complete: {pipe.Output.Count} count");
+
+                            try
+                            {
+                                pipe.Stop();
+                            }
+                            catch (PSObjectDisposedException)
+                            {
+                                //ignore
+                                //Debug.WriteLine($"Pipe[{pipe.InstanceId}]: stop error");
+                            }
+
+                            defaultRunspace?.Dispose();
+                        })));
                     }
                     else
                     {
                         //Debug.WriteLine($"Pipe[{pipe.InstanceId}]: unsubscribed");
+
+                        defaultRunspace?.Dispose();
                     }
+                });
 
-                    defaultRunspace?.Dispose();
-
-                    //Debug.WriteLine("pipe invoke disposed");
-                }));
+                return new CompositeDisposable(s0, s1, s2, s3);
             });
         }
 

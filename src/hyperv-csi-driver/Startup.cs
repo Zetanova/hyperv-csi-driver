@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using HypervCsiDriver.Hosting;
+﻿using HypervCsiDriver.Hosting;
 using HypervCsiDriver.Infrastructure;
 using HypervCsiDriver.Utils;
 using Microsoft.AspNetCore.Builder;
@@ -12,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using System.Linq;
 
 namespace HypervCsiDriver
 {
@@ -38,7 +35,7 @@ namespace HypervCsiDriver
                             //load hyperv host from kvp 
                             if (string.IsNullOrEmpty(opt.HostName))
                             {
-                                var (_,value) = HypervUtils.ReadKvpPoolAsync()
+                                var (_, value) = HypervUtils.ReadKvpPoolAsync()
                                     .FirstOrDefaultAsync(n => n.Name == "PhysicalHostNameFullyQualified")
                                     .Result;
 
@@ -67,7 +64,7 @@ namespace HypervCsiDriver
 
 
             var driverType = Configuration.GetValue<HypervCsiDriverType>("Driver:Type");
-            switch(driverType)
+            switch (driverType)
             {
                 case HypervCsiDriverType.Controller:
                     services.AddSingleton<IHypervVolumeService, HypervVolumeService>();
@@ -89,12 +86,12 @@ namespace HypervCsiDriver
             }
 
             app.UseRouting();
-            
+
             app.UseEndpoints(endpoints =>
             {
                 endpoints.MapGrpcService<HypervCsiIdentity>();
-                
-                switch(driverOptions.Value.Type)
+
+                switch (driverOptions.Value.Type)
                 {
                     case HypervCsiDriverType.Controller:
                         endpoints.MapGrpcService<HypervCsiController>();
@@ -103,7 +100,7 @@ namespace HypervCsiDriver
                         endpoints.MapGrpcService<HypervCsiNode>();
                         break;
                 }
-                
+
                 endpoints.MapGet("/", async context =>
                 {
                     await context.Response.WriteAsync("Communication with gRPC endpoints must be made through a gRPC client. To learn how to create a client, visit: https://go.microsoft.com/fwlink/?linkid=2086909");

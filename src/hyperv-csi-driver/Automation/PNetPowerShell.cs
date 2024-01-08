@@ -101,12 +101,10 @@ namespace PNet.Automation
             _timer = new System.Threading.Timer(OnScarvange);
         }
 
-        public PNetRunspacePool(RunspaceConnectionInfo connectionInfo) : base()
+        public PNetRunspacePool(RunspaceConnectionInfo connectionInfo) : this()
         {
             _connectionInfo = connectionInfo;
         }
-
-
 
         public async Task<Runspace> RentAsync(CancellationToken cancellationToken = default)
         {

@@ -5,7 +5,6 @@ using Microsoft.Extensions.Options;
 using PNet.Automation;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Management.Automation;
 using System.Management.Automation.Runspaces;
@@ -206,7 +205,7 @@ namespace HypervCsiDriver.Infrastructure
     public sealed class HyperVHostOptions
     {
         public string HostName { get; set; }
-        
+
         public string UserName { get; set; }
 
         public string KeyFile { get; set; }
@@ -399,15 +398,15 @@ namespace HypervCsiDriver.Infrastructure
                     Storage = HypervUtils.GetStorageNameFromPath((string)item.Path),
                     Shared = false //todo .vhds                    
                 };
-            } 
-            catch(RemoteException ex)
+            }
+            catch (RemoteException ex)
             {
                 //todo
                 //Getting the mounted storage instance for the path 'C:\ClusterStorage\hv05\Volumes\pvc-XXX.vhdx' failed.
                 //The operation cannot be performed while the object is in use.
 
                 throw;
-            }            
+            }
         }
 
         public IAsyncEnumerable<HypervVolumeInfo> GetVolumesAsync(HypervVolumeFilter filter = null)
@@ -528,7 +527,7 @@ namespace HypervCsiDriver.Infrastructure
 
 
             //lookup free disk drive
-            
+
             cmd = new Command("Get-VM");
             cmd.Parameters.Add("Id", request.VMId);
             commands.Add(cmd);
@@ -566,7 +565,7 @@ namespace HypervCsiDriver.Infrastructure
                 cmd.Parameters.Add("ErrorAction", "SilentlyContinue");
                 //MaximumIOPS, MinimumIOPS
                 commands.Add(cmd);
-            } 
+            }
             else
             {
                 cmd = new Command("Get-VMHardDiskDrive");
@@ -626,8 +625,8 @@ namespace HypervCsiDriver.Infrastructure
             {
                 dynamic? item = await _power.InvokeAsync(commands).ThrowOnError()
                     .FirstOrDefaultAsync(cancellationToken);
-                
-                if(item is not null)
+
+                if (item is not null)
                     return new HypervVirtualMachineVolumeInfo
                     {
                         VMId = item.VMId,

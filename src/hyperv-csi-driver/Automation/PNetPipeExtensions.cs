@@ -226,7 +226,7 @@ namespace PNet.Automation
                             {
                                 pipe.Stop();
                             }
-                            catch (PSObjectDisposedException)
+                            catch (ObjectDisposedException)
                             {
                                 //ignore
                                 //Debug.WriteLine($"Pipe[{pipe.InstanceId}]: stop error");

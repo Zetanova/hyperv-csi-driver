@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/aspnet:6.0-focal AS base
+FROM mcr.microsoft.com/dotnet/aspnet:6.0-jammy AS base
 RUN apt-get update && apt-get install -y \
 	openssh-client \
 	parted \
@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y \
 	&& rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
-FROM mcr.microsoft.com/dotnet/sdk:6.0-focal AS build
+FROM mcr.microsoft.com/dotnet/sdk:6.0-jammy AS build
 WORKDIR /src
 COPY ["hyperv-csi-driver/HypervCsiDriver.csproj", "hyperv-csi-driver/"]
 RUN dotnet restore "hyperv-csi-driver/HypervCsiDriver.csproj"

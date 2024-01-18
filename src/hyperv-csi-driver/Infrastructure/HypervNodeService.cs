@@ -592,7 +592,10 @@ namespace HypervCsiDriver.Infrastructure
                 _logger.LogWarning("soft delete {TargetPath}", request.TargetPath);
 
                 //move target dir to ./Trash/mount-{timestamp}
-                cmd = new Command($"Move-item -Path {request.TargetPath} -Destination (Join-Path -Path {request.TargetPath} -ChildPath ../Trash/mount-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}) -Force", true);
+                var script = $"New-Item -Type Directory -Path (Join-Path -Path {request.TargetPath} -ChildPath ../Trash) -ErrorAction SilentlyContinue" +
+                    $"\nMove-item -Path {request.TargetPath} -Destination (Join-Path -Path {request.TargetPath} -ChildPath ../Trash/mount-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}) -Force";
+
+                cmd = new Command(script, true);
                 commands.Add(cmd);
 
                 _ = await _power.InvokeAsync(commands).ThrowOnError()

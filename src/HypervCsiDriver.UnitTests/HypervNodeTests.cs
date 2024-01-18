@@ -108,7 +108,9 @@ namespace HypervCsiDriver.UnitTests
         }
 
         [Theory]
-        [InlineData("lnx1515", "/notexist", false)]
+        [InlineData("lnx1515", "/tmp/test/373484", false)]
+        [InlineData("lnx1515", "/tmp", false)]
+        [InlineData("lnx1515", "/", true)]
         public async Task TestMountpointAsync(string hostName, string targetPath, bool result)
         {
             var power = Fixture.GetPower(hostName);
@@ -119,7 +121,7 @@ namespace HypervCsiDriver.UnitTests
             cmd = new Command($"& mountpoint {targetPath} 2>&1", true);
             commands.Add(cmd);
 
-            var mountpointResult = await power.InvokeAsync(commands).ThrowOnError()
+            var mountpointResult = await power.InvokeAsync(commands)
                 .Select(n => n.BaseObject).OfType<string>()
                 .FirstOrDefaultAsync();
 

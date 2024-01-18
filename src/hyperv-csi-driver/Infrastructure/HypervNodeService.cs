@@ -531,15 +531,35 @@ namespace HypervCsiDriver.Infrastructure
             Command cmd;
             var commands = new List<Command>(1);
 
-            _logger.LogDebug("unmount {TargetPath}", request.TargetPath);
+            {
+                cmd = new Command("Test-Path");
+                cmd.Parameters.Add("Path", request.TargetPath);
+                commands.Add(cmd);
 
-            //umount /drivetest
-            cmd = new Command($"& umount --recursive {request.TargetPath} 2>&1", true);
-            commands.Add(cmd);
+                var pathExists = await _power.InvokeAsync(commands)
+                    .Select(n => n.BaseObject).OfType<bool>()
+                    .FirstOrDefaultAsync(cancellationToken);
 
-            _ = await _power.InvokeAsync(commands)
-                .FirstOrDefaultAsync(cancellationToken);
-            
+                if (!pathExists)
+                {
+                    _logger.LogDebug("target path does not exist");
+                    return;
+                }
+            }
+
+            {
+                commands.Clear();
+
+                _logger.LogDebug("unmount {TargetPath}", request.TargetPath);
+
+                //umount /drivetest
+                cmd = new Command($"& umount --recursive {request.TargetPath} 2>&1", true);
+                commands.Add(cmd);
+
+                _ = await _power.InvokeAsync(commands)
+                    .FirstOrDefaultAsync(cancellationToken);
+            }
+
             {
                 commands.Clear();
 
@@ -550,70 +570,76 @@ namespace HypervCsiDriver.Infrastructure
                 // /target is not a mountpoint
                 // /target is a mountpoint
                 // mountpoint: /target: No such file or directory
-                var mountpointResult = await _power.InvokeAsync(commands).ThrowOnError()
+                var mountpointResult = await _power.InvokeAsync(commands)
                     .Select(n => n.BaseObject).OfType<string>()
                     .FirstOrDefaultAsync(cancellationToken);
 
                 if (!string.IsNullOrEmpty(mountpointResult) && mountpointResult.EndsWith("is a mountpoint"))
                     throw new Exception("target umount failed");
             }
-            
-            commands.Clear();
 
-            //mount target could have files in a buggy situation
-            cmd = new Command("Test-Path");
-            cmd.Parameters.Add("Path", $"{request.TargetPath}/*");
-            commands.Add(cmd);
-
-            var hasFiles = await _power.InvokeAsync(commands)
-                .Select(n => n.BaseObject).OfType<bool>()
-                .FirstOrDefaultAsync(cancellationToken);
-
-            commands.Clear();
-
-            if (!hasFiles)
             {
-                _logger.LogDebug("delete {TargetPath}", request.TargetPath);
+                commands.Clear();
 
-                //delete empty target dir
-                cmd = new Command("Remove-Item");
-                cmd.Parameters.Add("Path", request.TargetPath);
-                cmd.Parameters.Add("ErrorAction", "SilentlyContinue");
+                //mount target could have files in a buggy situation
+                cmd = new Command("Test-Path");
+                cmd.Parameters.Add("Path", $"{request.TargetPath}/*");
                 commands.Add(cmd);
 
-                _ = await _power.InvokeAsync(commands).ThrowOnError()
+                var hasFiles = await _power.InvokeAsync(commands)
+                    .Select(n => n.BaseObject).OfType<bool>()
                     .FirstOrDefaultAsync(cancellationToken);
-            } 
-            else
-            {
-                //if the unmounted target contains files
-                //we don't delete the folder and move it to ./Trash/mount-{timestamp} instead
 
-                _logger.LogWarning("soft delete {TargetPath}", request.TargetPath);
+                if (!hasFiles)
+                {
+                    commands.Clear();
 
-                //move target dir to ./Trash/mount-{timestamp}
-                var script = $"New-Item -Type Directory -Path (Join-Path -Path {request.TargetPath} -ChildPath ../Trash) -ErrorAction SilentlyContinue" +
-                    $"\nMove-item -Path {request.TargetPath} -Destination (Join-Path -Path {request.TargetPath} -ChildPath ../Trash/mount-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}) -Force";
+                    _logger.LogDebug("delete {TargetPath}", request.TargetPath);
 
-                cmd = new Command(script, true);
-                commands.Add(cmd);
+                    //delete empty target dir
+                    cmd = new Command("Remove-Item");
+                    cmd.Parameters.Add("Path", request.TargetPath);
+                    cmd.Parameters.Add("ErrorAction", "SilentlyContinue");
+                    commands.Add(cmd);
 
-                _ = await _power.InvokeAsync(commands).ThrowOnError()
-                    .FirstOrDefaultAsync(cancellationToken);
+                    _ = await _power.InvokeAsync(commands).ThrowOnError()
+                        .FirstOrDefaultAsync(cancellationToken);
+                }
+                else
+                {
+                    commands.Clear();
+
+                    //if the unmounted target contains files
+                    //we don't delete the folder and move it to ./Trash/mount-{timestamp} instead
+
+                    _logger.LogWarning("soft delete {TargetPath}", request.TargetPath);
+
+                    //move target dir to ./Trash/mount-{timestamp}
+                    var script = $"New-Item -Type Directory -Path (Join-Path -Path {request.TargetPath} -ChildPath ../Trash) -ErrorAction SilentlyContinue" +
+                        $"\nMove-item -Path {request.TargetPath} -Destination (Join-Path -Path {request.TargetPath} -ChildPath ../Trash/mount-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}) -Force";
+
+                    cmd = new Command(script, true);
+                    commands.Add(cmd);
+
+                    _ = await _power.InvokeAsync(commands).ThrowOnError()
+                        .FirstOrDefaultAsync(cancellationToken);
+                }
             }
 
-            commands.Clear();
+            {
+                commands.Clear();
 
-            cmd = new Command("Test-Path");
-            cmd.Parameters.Add("Path", request.TargetPath);
-            commands.Add(cmd);
+                cmd = new Command("Test-Path");
+                cmd.Parameters.Add("Path", request.TargetPath);
+                commands.Add(cmd);
 
-            var pathExists = await _power.InvokeAsync(commands)
-                .Select(n => n.BaseObject).OfType<bool>()
-                .FirstOrDefaultAsync(cancellationToken);
+                var pathExists = await _power.InvokeAsync(commands)
+                    .Select(n => n.BaseObject).OfType<bool>()
+                    .FirstOrDefaultAsync(cancellationToken);
 
-            if (pathExists)
-                throw new Exception("target could not be deleted");
+                if (pathExists)
+                    throw new Exception("target could not be deleted");
+            }
         }
 
         public void Dispose()

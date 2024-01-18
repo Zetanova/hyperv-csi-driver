@@ -108,6 +108,27 @@ namespace HypervCsiDriver.UnitTests
         }
 
         [Theory]
+        [InlineData("lnx1515", "/notexist", false)]
+        public async Task TestMountpointAsync(string hostName, string targetPath, bool result)
+        {
+            var power = Fixture.GetPower(hostName);
+
+            Command cmd;
+            var commands = new List<Command>(2);
+
+            cmd = new Command($"& mountpoint {targetPath} 2>&1", true);
+            commands.Add(cmd);
+
+            var mountpointResult = await power.InvokeAsync(commands).ThrowOnError()
+                .Select(n => n.BaseObject).OfType<string>()
+                .FirstOrDefaultAsync();
+
+            var isMounted = !string.IsNullOrEmpty(mountpointResult) && mountpointResult.EndsWith("is a mountpoint");
+
+            Assert.Equal(result, isMounted);
+        }
+
+        [Theory]
         [InlineData("lnx1513", "/dev/sdd1")]
         public async Task EnumDeviceLabelsAsync(string hostName, string deviceName)
         {

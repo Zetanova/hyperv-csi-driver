@@ -404,7 +404,7 @@ namespace HypervCsiDriver.Infrastructure
 
             commands.Clear();
 
-            //stage-volume is tracey until 1.22
+            //stage-volume is racey until 1.22
             //see https://github.com/kubernetes/kubernetes/issues/100182
             //see https://bugzilla.redhat.com/show_bug.cgi?id=1936408
             //workaround: we sync before unmount
@@ -504,6 +504,24 @@ namespace HypervCsiDriver.Infrastructure
 
             _ = await _power.InvokeAsync(commands).ThrowOnError()
                 .FirstOrDefaultAsync(cancellationToken);
+
+            {
+                commands.Clear();
+
+                //test target for mountpoint:
+                cmd = new Command($"& mountpoint {request.PublishTargetPath} 2>&1", true);
+                commands.Add(cmd);
+
+                // /target is not a mountpoint
+                // /target is a mountpoint
+                // mountpoint: /target: No such file or directory
+                var mountpointResult = await _power.InvokeAsync(commands).ThrowOnError()
+                    .Select(n => n.BaseObject).OfType<string>()
+                    .FirstOrDefaultAsync(cancellationToken);
+
+                if (string.IsNullOrEmpty(mountpointResult) || !mountpointResult.EndsWith("is a mountpoint"))
+                    throw new Exception("target mount failed");
+            }
         }
 
         public async Task UnpublishDeviceAsync(HypervNodeUnpublishRequest request, CancellationToken cancellationToken = default)
@@ -521,20 +539,78 @@ namespace HypervCsiDriver.Infrastructure
 
             _ = await _power.InvokeAsync(commands)
                 .FirstOrDefaultAsync(cancellationToken);
+            
+            {
+                commands.Clear();
 
+                //test target for mountpoint:
+                cmd = new Command($"& mountpoint {request.TargetPath} 2>&1", true);
+                commands.Add(cmd);
 
-            _logger.LogDebug("delete {TargetPath}", request.TargetPath);
+                // /target is not a mountpoint
+                // /target is a mountpoint
+                // mountpoint: /target: No such file or directory
+                var mountpointResult = await _power.InvokeAsync(commands).ThrowOnError()
+                    .Select(n => n.BaseObject).OfType<string>()
+                    .FirstOrDefaultAsync(cancellationToken);
+
+                if (!string.IsNullOrEmpty(mountpointResult) && mountpointResult.EndsWith("is a mountpoint"))
+                    throw new Exception("target umount failed");
+            }
+            
+            commands.Clear();
+
+            //mount target could have files in a buggy situation
+            cmd = new Command("Test-Path");
+            cmd.Parameters.Add("Path", $"{request.TargetPath}/*");
+            commands.Add(cmd);
+
+            var hasFiles = await _power.InvokeAsync(commands)
+                .Select(n => n.BaseObject).OfType<bool>()
+                .FirstOrDefaultAsync(cancellationToken);
 
             commands.Clear();
 
-            //delete target dir
-            cmd = new Command("Remove-Item");
+            if (!hasFiles)
+            {
+                _logger.LogDebug("delete {TargetPath}", request.TargetPath);
+
+                //delete empty target dir
+                cmd = new Command("Remove-Item");
+                cmd.Parameters.Add("Path", request.TargetPath);
+                cmd.Parameters.Add("ErrorAction", "SilentlyContinue");
+                commands.Add(cmd);
+
+                _ = await _power.InvokeAsync(commands).ThrowOnError()
+                    .FirstOrDefaultAsync(cancellationToken);
+            } 
+            else
+            {
+                //if the unmounted target contains files
+                //we don't delete the folder and move it to ./Trash/mount-{timestamp} instead
+
+                _logger.LogWarning("soft delete {TargetPath}", request.TargetPath);
+
+                //move target dir to ./Trash/mount-{timestamp}
+                cmd = new Command($"Move-item -Path {request.TargetPath} -Destination (Join-Path -Path {request.TargetPath} -ChildPath ../Trash/mount-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}) -Force", true);
+                commands.Add(cmd);
+
+                _ = await _power.InvokeAsync(commands).ThrowOnError()
+                    .FirstOrDefaultAsync(cancellationToken);
+            }
+
+            commands.Clear();
+
+            cmd = new Command("Test-Path");
             cmd.Parameters.Add("Path", request.TargetPath);
-            cmd.Parameters.Add("ErrorAction", "SilentlyContinue");
             commands.Add(cmd);
 
-            _ = await _power.InvokeAsync(commands).ThrowOnError()
+            var pathExists = await _power.InvokeAsync(commands)
+                .Select(n => n.BaseObject).OfType<bool>()
                 .FirstOrDefaultAsync(cancellationToken);
+
+            if (pathExists)
+                throw new Exception("target could not be deleted");
         }
 
         public void Dispose()

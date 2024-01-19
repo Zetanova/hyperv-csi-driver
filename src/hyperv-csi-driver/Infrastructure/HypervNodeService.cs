@@ -302,40 +302,62 @@ namespace HypervCsiDriver.Infrastructure
 
             if (string.IsNullOrEmpty(mountpoint))
             {
-                _logger.LogDebug("create {TargetPath}", request.TargetPath);
+                {
+                    commands.Clear();
 
-                commands.Clear();
+                    _logger.LogDebug("create {TargetPath}", request.TargetPath);
 
-                cmd = new Command("New-Item");
-                cmd.Parameters.Add("ItemType", "directory");
-                cmd.Parameters.Add("Path", request.TargetPath);
-                cmd.Parameters.Add("ErrorAction", "SilentlyContinue");
-                commands.Add(cmd);
+                    cmd = new Command("New-Item");
+                    cmd.Parameters.Add("ItemType", "directory");
+                    cmd.Parameters.Add("Path", request.TargetPath);
+                    cmd.Parameters.Add("ErrorAction", "SilentlyContinue");
+                    commands.Add(cmd);
 
-                _ = await _power.InvokeAsync(commands).ThrowOnError()
-                    .FirstOrDefaultAsync(cancellationToken);
+                    _ = await _power.InvokeAsync(commands).ThrowOnError()
+                        .FirstOrDefaultAsync(cancellationToken);
+                }
 
-                _logger.LogInformation("mounting {DeviceName} to {TargetPath}", deviceName, request.TargetPath);
+                {
+                    commands.Clear();
 
-                commands.Clear();
+                    _logger.LogInformation("mounting {DeviceName} to {TargetPath}", deviceName, request.TargetPath);
 
-                var options = new HashSet<string> { "discard", "noatime" };
+                    var options = new HashSet<string> { "discard", "noatime" };
 
-                foreach (var opt in (request.Options ?? Array.Empty<string>()))
-                    options.Add(opt);
+                    foreach (var opt in (request.Options ?? Array.Empty<string>()))
+                        options.Add(opt);
 
-                if (request.Readonly)
-                    options.Add("ro");
+                    if (request.Readonly)
+                        options.Add("ro");
 
-                //mount -o "discard,noatime,ro" /dev/sdb1 /drivetest
-                cmd = new Command($"mkdir -p {request.TargetPath} && mount -o \"{string.Join(",", options)}\" {deviceName} {request.TargetPath}", true);
-                commands.Add(cmd);
+                    //mount -o "discard,noatime,ro" /dev/sdb1 /drivetest
+                    cmd = new Command($"mount -o \"{string.Join(",", options)}\" {deviceName} {request.TargetPath}", true);
+                    commands.Add(cmd);
 
-                //Labels are normaly only 16-chars long
-                //Warning: label too long; will be truncated to 'pvc-5a344250-ca2'
+                    //Labels are normaly only 16-chars long
+                    //Warning: label too long; will be truncated to 'pvc-5a344250-ca2'
 
-                _ = await _power.InvokeAsync(commands).ThrowOnError()
-                    .ToListAsync(cancellationToken);
+                    _ = await _power.InvokeAsync(commands).ThrowOnError()
+                        .ToListAsync(cancellationToken);
+                }
+
+                {
+                    commands.Clear();
+
+                    //test target for mountpoint:
+                    cmd = new Command($"& mountpoint {request.TargetPath} 2>&1", true);
+                    commands.Add(cmd);
+
+                    // /target is not a mountpoint
+                    // /target is a mountpoint
+                    // mountpoint: /target: No such file or directory
+                    var mountpointResult = await _power.InvokeAsync(commands)
+                        .Select(n => n.BaseObject).OfType<string>()
+                        .FirstOrDefaultAsync(cancellationToken);
+
+                    if (string.IsNullOrEmpty(mountpointResult) || !mountpointResult.EndsWith("is a mountpoint"))
+                        throw new Exception("target mount failed");
+                }
 
                 mountpoint = request.TargetPath;
             }
@@ -392,59 +414,96 @@ namespace HypervCsiDriver.Infrastructure
             cmd.Parameters.Add("Path", request.TargetPath);
             commands.Add(cmd);
 
-            var pathExists = await _power.InvokeAsync(commands)
-                .Select(n => n.BaseObject).OfType<bool>()
-                .FirstOrDefaultAsync(cancellationToken);
-
-            if (!pathExists)
             {
-                _logger.LogWarning("test for path {TargetPath} failed", request.TargetPath);
-                return;
+                var pathExists = await _power.InvokeAsync(commands)
+                                .Select(n => n.BaseObject).OfType<bool>()
+                                .FirstOrDefaultAsync(cancellationToken);
+
+                if (!pathExists)
+                {
+                    _logger.LogWarning("test for path {TargetPath} failed", request.TargetPath);
+                    return;
+                }
             }
 
-            commands.Clear();
+            {
+                commands.Clear();
 
-            //stage-volume is racey until 1.22
-            //see https://github.com/kubernetes/kubernetes/issues/100182
-            //see https://bugzilla.redhat.com/show_bug.cgi?id=1936408
-            //workaround: we sync before unmount
+                //stage-volume is racey until 1.22
+                //see https://github.com/kubernetes/kubernetes/issues/100182
+                //see https://bugzilla.redhat.com/show_bug.cgi?id=1936408
+                //workaround: we sync before unmount
 
-            _logger.LogDebug("sync {TargetPath}", request.TargetPath);
+                _logger.LogDebug("sync {TargetPath}", request.TargetPath);
 
-            cmd = new Command($"sync --file-system {request.TargetPath}", true);
-            commands.Add(cmd);
+                cmd = new Command($"sync --file-system {request.TargetPath}", true);
+                commands.Add(cmd);
 
-            _ = await _power.InvokeAsync(commands)
-                .FirstOrDefaultAsync(cancellationToken);
+                _ = await _power.InvokeAsync(commands)
+                    .FirstOrDefaultAsync(cancellationToken);
 
-            cancellationToken.ThrowIfCancellationRequested();
+                cancellationToken.ThrowIfCancellationRequested();
+            }
 
+            {
+                commands.Clear();
 
-            commands.Clear();
+                _logger.LogDebug("unmount {TargetPath}", request.TargetPath);
 
-            _logger.LogDebug("unmount {TargetPath}", request.TargetPath);
+                //umount /drivetest
+                cmd = new Command($"& umount {request.TargetPath} 2>&1", true);
+                commands.Add(cmd);
 
-            //umount /drivetest
-            cmd = new Command($"& umount {request.TargetPath} 2>&1", true);
-            commands.Add(cmd);
+                _ = await _power.InvokeAsync(commands)
+                    .FirstOrDefaultAsync(cancellationToken);
 
-            _ = await _power.InvokeAsync(commands)
-                .FirstOrDefaultAsync(cancellationToken);
+                {
+                    commands.Clear();
 
-            _logger.LogDebug("delete {TargetPath}", request.TargetPath);
+                    //test target for mountpoint:
+                    cmd = new Command($"& mountpoint {request.TargetPath} 2>&1", true);
+                    commands.Add(cmd);
 
-            commands.Clear();
+                    // /target is not a mountpoint
+                    // /target is a mountpoint
+                    // mountpoint: /target: No such file or directory
+                    var mountpointResult = await _power.InvokeAsync(commands)
+                        .Select(n => n.BaseObject).OfType<string>()
+                        .FirstOrDefaultAsync(cancellationToken);
 
+                    if (!string.IsNullOrEmpty(mountpointResult) && mountpointResult.EndsWith("is a mountpoint"))
+                        throw new Exception("target umount failed");
+                }
+            }
 
-            _logger.LogDebug("remove {TargetPath}", request.TargetPath);
+            {
+                commands.Clear();
 
-            cmd = new Command("Remove-Item");
-            cmd.Parameters.Add("Path", request.TargetPath);
-            cmd.Parameters.Add("ErrorAction", "SilentlyContinue");
-            commands.Add(cmd);
+                _logger.LogDebug("remove {TargetPath}", request.TargetPath);
 
-            _ = await _power.InvokeAsync(commands).ThrowOnError()
-                .FirstOrDefaultAsync(cancellationToken);
+                cmd = new Command("Remove-Item");
+                cmd.Parameters.Add("Path", request.TargetPath);
+                cmd.Parameters.Add("ErrorAction", "SilentlyContinue");
+                commands.Add(cmd);
+
+                _ = await _power.InvokeAsync(commands).ThrowOnError()
+                    .FirstOrDefaultAsync(cancellationToken);
+            }
+
+            {
+                commands.Clear();
+
+                cmd = new Command("Test-Path");
+                cmd.Parameters.Add("Path", request.TargetPath);
+                commands.Add(cmd);
+
+                var pathExists = await _power.InvokeAsync(commands)
+                    .Select(n => n.BaseObject).OfType<bool>()
+                    .FirstOrDefaultAsync(cancellationToken);
+
+                if (pathExists)
+                    throw new Exception("target could not be deleted");
+            }
         }
 
         public async Task PublishDeviceAsync(HypervNodePublishRequest request, CancellationToken cancellationToken = default)

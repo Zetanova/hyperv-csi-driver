@@ -513,56 +513,63 @@ namespace HypervCsiDriver.Infrastructure
             Command cmd;
             var commands = new List<Command>(1);
 
-
-            //staging globalmount path can be unmounted
-            //mount will fail: special device /var/lib/kubelet/plugins/kubernetes.io/csi/pv/pvc-XXX/globalmount does not exist
-            //see: https://github.com/kubernetes-sigs/azurefile-csi-driver/issue/875
-            //workaround: we lookup the target for an existing mount
-
-            cmd = new Command($"findmnt -fnr --target {request.PublishTargetPath}", true);
-            commands.Add(cmd);
-
-            ///var/lib/kubelet/pods/ed0cc331-7d86-40d8-a30e-a8df89fbc0e8/volumes/kubernetes.io~csi/pvc-XXX/mount /dev/sdb1 ext4 rw,noatime,seclabel,discard
-            var mountpoint = await _power.InvokeAsync(commands).ThrowOnError()
-                .Select(n => n.BaseObject).OfType<string>()
-                .FirstOrDefaultAsync(cancellationToken);
-
-            //todo fail on wrong mount source
-
-            if (!string.IsNullOrEmpty(mountpoint))
             {
-                _logger.LogDebug("mount to {TargetPath} exsists", request.PublishTargetPath);
-                return;
+                commands.Clear();
+
+                //staging globalmount path can be unmounted
+                //mount will fail: special device /var/lib/kubelet/plugins/kubernetes.io/csi/pv/pvc-XXX/globalmount does not exist
+                //see: https://github.com/kubernetes-sigs/azurefile-csi-driver/issue/875
+                //workaround: we lookup the target for an existing mount
+
+                //test target for mountpoint:
+                cmd = new Command($"& mountpoint {request.PublishTargetPath} 2>&1", true);
+                commands.Add(cmd);
+
+                // /target is not a mountpoint
+                // /target is a mountpoint
+                // mountpoint: /target: No such file or directory
+                var mountpointResult = await _power.InvokeAsync(commands).ThrowOnError()
+                    .Select(n => n.BaseObject).OfType<string>()
+                    .FirstOrDefaultAsync(cancellationToken);
+
+                if (!string.IsNullOrEmpty(mountpointResult) && mountpointResult.EndsWith("is a mountpoint"))
+                {
+                    _logger.LogDebug("mount to {TargetPath} exists", request.PublishTargetPath);
+                    return;
+                }
             }
 
-            commands.Clear();
+            {
+                commands.Clear();
 
-            _logger.LogDebug("create {TargetPath}", request.PublishTargetPath);
+                _logger.LogDebug("create {TargetPath}", request.PublishTargetPath);
 
-            //create target dir
-            cmd = new Command("New-Item");
-            cmd.Parameters.Add("ItemType", "directory");
-            cmd.Parameters.Add("Path", request.PublishTargetPath);
-            cmd.Parameters.Add("ErrorAction", "SilentlyContinue");
-            commands.Add(cmd);
+                //create target dir
+                cmd = new Command("New-Item");
+                cmd.Parameters.Add("ItemType", "directory");
+                cmd.Parameters.Add("Path", request.PublishTargetPath);
+                cmd.Parameters.Add("ErrorAction", "SilentlyContinue");
+                commands.Add(cmd);
 
-            _ = await _power.InvokeAsync(commands).ThrowOnError()
-               .FirstOrDefaultAsync(cancellationToken);
+                _ = await _power.InvokeAsync(commands).ThrowOnError()
+                   .FirstOrDefaultAsync(cancellationToken);
+            }
 
+            {
+                commands.Clear();
 
-            _logger.LogDebug("mount {SourcePath} to {TargetPath}", request.StagingTargetPath, request.PublishTargetPath);
+                _logger.LogDebug("mount {SourcePath} to {TargetPath}", request.StagingTargetPath, request.PublishTargetPath);
 
-            commands.Clear();
+                //mount --bind /source /target
+                cmd = new Command($"mkdir -p {request.PublishTargetPath} && mount --bind {request.StagingTargetPath} {request.PublishTargetPath}", true);
+                commands.Add(cmd);
 
-            //mount --bind /source /target
-            cmd = new Command($"mkdir -p {request.PublishTargetPath} && mount --bind {request.StagingTargetPath} {request.PublishTargetPath}", true);
-            commands.Add(cmd);
+                //maybe readonly required
+                //mount -o remount,ro,bind /target
 
-            //maybe readonly required
-            //mount -o remount,ro,bind /target
-
-            _ = await _power.InvokeAsync(commands).ThrowOnError()
-                .FirstOrDefaultAsync(cancellationToken);
+                _ = await _power.InvokeAsync(commands).ThrowOnError()
+                    .FirstOrDefaultAsync(cancellationToken);
+            }
 
             {
                 commands.Clear();

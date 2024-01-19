@@ -676,15 +676,22 @@ namespace HypervCsiDriver.Infrastructure
                     commands.Clear();
 
                     //if the unmounted target contains files
-                    //we don't delete the folder and move it to ./Trash/mount-{timestamp} instead
+                    //we don't delete the folder and soft delete it
+                    //to create a folder under ./Trash/mount-{timestamp} does not work and we move it to /tmp/mount-{timestamp} instead
 
                     _logger.LogWarning("soft delete {TargetPath}", request.TargetPath);
 
                     //move target dir to ./Trash/mount-{timestamp}
-                    var script = $"New-Item -Type Directory -Path (Join-Path -Path {request.TargetPath} -ChildPath ../Trash) -ErrorAction SilentlyContinue" +
-                        $"\nMove-item -Path {request.TargetPath} -Destination (Join-Path -Path {request.TargetPath} -ChildPath ../Trash/mount-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}) -Force";
+                    //var script = $"New-Item -Type Directory -Path (Join-Path -Path {request.TargetPath} -ChildPath ../Trash) -ErrorAction SilentlyContinue" +
+                    //    $"\nMove-item -Path {request.TargetPath} -Destination (Join-Path -Path {request.TargetPath} -ChildPath ../Trash/mount-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}) -Force";
 
-                    cmd = new Command(script, true);
+                    //cmd = new Command(script, true);
+                    //commands.Add(cmd);
+
+                    cmd = new Command("Move-item");
+                    cmd.Parameters.Add("Path", request.TargetPath);
+                    cmd.Parameters.Add("Destination", $"/tmp/mount-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}");
+                    cmd.Parameters.Add("Force");
                     commands.Add(cmd);
 
                     _ = await _power.InvokeAsync(commands).ThrowOnError()

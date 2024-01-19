@@ -528,7 +528,7 @@ namespace HypervCsiDriver.Infrastructure
                 // /target is not a mountpoint
                 // /target is a mountpoint
                 // mountpoint: /target: No such file or directory
-                var mountpointResult = await _power.InvokeAsync(commands).ThrowOnError()
+                var mountpointResult = await _power.InvokeAsync(commands)
                     .Select(n => n.BaseObject).OfType<string>()
                     .FirstOrDefaultAsync(cancellationToken);
 
@@ -581,7 +581,7 @@ namespace HypervCsiDriver.Infrastructure
                 // /target is not a mountpoint
                 // /target is a mountpoint
                 // mountpoint: /target: No such file or directory
-                var mountpointResult = await _power.InvokeAsync(commands).ThrowOnError()
+                var mountpointResult = await _power.InvokeAsync(commands)
                     .Select(n => n.BaseObject).OfType<string>()
                     .FirstOrDefaultAsync(cancellationToken);
 
